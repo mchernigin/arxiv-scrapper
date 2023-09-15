@@ -1,8 +1,16 @@
+type Url = String;
+
+pub struct Page {
+    papers: Vec<Paper>,
+    next_page_url: Url,
+}
+
 #[derive(Debug)]
 pub struct Paper {
     title: String,
     authors: Vec<String>,
     description: String,
+    subjects: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -20,7 +28,7 @@ impl Scraper {
         }
     }
 
-    async fn get_dom(&self, url: String) -> reqwest::Result<scraper::Html> {
+    async fn get_dom(&self, url: Url) -> reqwest::Result<scraper::Html> {
         let home_page = self.client.get(url).send().await?;
         let body = home_page.text().await?;
         let dom = scraper::Html::parse_document(&body);
@@ -28,7 +36,7 @@ impl Scraper {
         Ok(dom)
     }
 
-    pub async fn scrape_paper(&self, url: String) -> reqwest::Result<Paper> {
+    pub async fn scrape_paper(&self, url: Url) -> reqwest::Result<Paper> {
         let dom = self.get_dom(url).await?;
 
         let title_selector = scraper::Selector::parse("h1.title").unwrap();
@@ -53,14 +61,24 @@ impl Scraper {
             .replace("\n", " ")
             .to_string();
 
+        let subjects_selector = scraper::Selector::parse("td.subjects").unwrap();
+        let subjects_element = dom.select(&subjects_selector).next().unwrap();
+        let subjects = subjects_element
+            .text()
+            .collect::<String>()
+            .split(';')
+            .map(|x| x.trim().to_string())
+            .collect();
+
         Ok(Paper {
             title,
             authors,
             description,
+            subjects,
         })
     }
 
-    pub async fn scrape_page(&self, url: &str) -> reqwest::Result<Vec<String>> {
+    pub async fn scrape_page(&self, url: Url) -> reqwest::Result<Vec<Url>> {
         let home_page = self.client.get(url).send().await?;
         let body = home_page.text().await?;
         let dom = scraper::Html::parse_document(&body);
