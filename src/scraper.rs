@@ -1,8 +1,10 @@
+use indicatif::ProgressIterator;
+
 type Url = String;
 
 pub struct Page {
-    papers: Vec<Paper>,
-    next_page_url: Url,
+    pub papers: Vec<Paper>,
+    pub next_page_url: Url,
 }
 
 #[derive(Debug)]
@@ -78,7 +80,7 @@ impl Scraper {
         })
     }
 
-    pub async fn scrape_page(&self, url: Url) -> reqwest::Result<Vec<Url>> {
+    pub async fn scrape_page(&self, url: Url) -> reqwest::Result<Page> {
         let home_page = self.client.get(url).send().await?;
         let body = home_page.text().await?;
         let dom = scraper::Html::parse_document(&body);
@@ -87,8 +89,36 @@ impl Scraper {
         let paper_links = dom
             .select(&paper_link_selector)
             .map(|l| l.value().attr("href").unwrap().to_string())
-            .collect();
+            .collect::<Vec<Url>>();
 
-        Ok(paper_links)
+        let papers_bar_style = indicatif::ProgressStyle::with_template(
+            "[{elapsed_precise:.dim}] [{bar:50.cyan/blue}] {pos}/{len} ({eta})",
+        )
+        .unwrap()
+        .progress_chars("##.");
+
+        let mut papers = Vec::new();
+        for paper_link in paper_links
+            .into_iter()
+            .progress_with_style(papers_bar_style)
+            .with_finish(indicatif::ProgressFinish::Abandon)
+        {
+            papers.push(self.scrape_paper(paper_link).await?);
+        }
+
+        let next_page_selector = scraper::Selector::parse("a.pagination-next").unwrap();
+        let next_page_url = dom
+            .select(&next_page_selector)
+            .next()
+            .unwrap()
+            .value()
+            .attr("href")
+            .unwrap()
+            .to_string();
+
+        Ok(Page {
+            papers,
+            next_page_url,
+        })
     }
 }

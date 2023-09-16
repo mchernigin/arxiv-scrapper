@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.75"
 console = "0.15.7"
+futures = "0.3.28"
 indicatif = "0.17.6"
 reqwest = "0.11.20"
 scraper = "0.17.1"
