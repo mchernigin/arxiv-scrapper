@@ -2,12 +2,13 @@ use indicatif::ProgressIterator;
 
 type Url = String;
 
+#[derive(Debug, serde::Serialize)]
 pub struct Page {
     pub papers: Vec<Paper>,
-    pub next_page_url: Url,
+    pub next_page_url: Option<Url>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct Paper {
     title: String,
     authors: Vec<String>,
@@ -107,14 +108,14 @@ impl Scraper {
         }
 
         let next_page_selector = scraper::Selector::parse("a.pagination-next").unwrap();
-        let next_page_url = dom
-            .select(&next_page_selector)
-            .next()
-            .unwrap()
-            .value()
-            .attr("href")
-            .unwrap()
-            .to_string();
+        let mut next_page_url = None;
+        if let Some(next_page_href) = dom.select(&next_page_selector).next() {
+            let mut next_page = "https://arxiv.org".to_string();
+            let next_page_href = next_page_href.value().attr("href").unwrap().to_string();
+            next_page.push_str(&next_page_href);
+
+            next_page_url = Some(next_page);
+        }
 
         Ok(Page {
             papers,
