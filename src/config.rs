@@ -16,4 +16,7 @@ pub struct Config {
     /// Data directory
     #[arg(short, long, value_name = "FILE", default_value = "data")]
     pub data_dir: std::path::PathBuf,
+
+    #[clap(skip)]
+    pub progress_bars: indicatif::MultiProgress,
 }

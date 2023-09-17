@@ -16,9 +16,21 @@ async fn main() -> anyhow::Result<()> {
 
     let scraper = scraper::Scraper::new(cfg.clone());
 
+    let pages_progress = cfg.progress_bars.add(
+        indicatif::ProgressBar::new(cfg.max_pages as u64).with_style(
+            indicatif::ProgressStyle::with_template(
+                "[{elapsed_precise:.dim}] [{bar:50.cyan/blue}] {pos}/{len} ({eta})",
+            )
+            .unwrap()
+            .progress_chars("##."),
+        ),
+    );
+    pages_progress.enable_steady_tick(std::time::Duration::from_millis(100));
+
     let mut pages = Vec::new();
     let mut current_url = start_url;
     for _ in 0..cfg.max_pages {
+        pages_progress.inc(0);
         let page = scraper.scrape_page(current_url.to_string()).await?;
         let next_page_url = page.next_page_url.clone();
         pages.push(page);
@@ -28,6 +40,7 @@ async fn main() -> anyhow::Result<()> {
         } else {
             break;
         }
+        pages_progress.inc(1);
     }
 
     let data = serde_json::to_string_pretty::<Vec<scraper::Page>>(&pages)?;

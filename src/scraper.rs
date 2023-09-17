@@ -1,4 +1,3 @@
-use indicatif::ProgressIterator;
 use std::io::Read;
 
 use crate::config;
@@ -70,7 +69,6 @@ impl Scraper {
 
         let response = self.client.get(url).send().await?;
 
-        println!("{filepath:?}");
         let mut file = tokio::fs::File::create(filepath.clone()).await.unwrap();
 
         let mut content = std::io::Cursor::new(response.bytes().await?);
@@ -115,15 +113,15 @@ impl Scraper {
 
         let pdf_url = abstract_url.replace("abs", "pdf");
         let content = self.download_pdf(pdf_url).await?;
-        let document = lopdf::Document::load_mem(&content).expect("Can not load document");
 
-        let pages = document.get_pages();
         let mut text = String::new();
-
-        for (i, _) in pages.iter().enumerate() {
-            let page_number = (i + 1) as u32;
-            let page_text = document.extract_text(&[page_number]);
-            text.push_str(&page_text.unwrap_or_default());
+        if let Ok(document) = lopdf::Document::load_mem(&content) {
+            let pages = document.get_pages();
+            for (i, _) in pages.iter().enumerate() {
+                let page_number = (i + 1) as u32;
+                let page_text = document.extract_text(&[page_number]);
+                text.push_str(&page_text.unwrap_or_default());
+            }
         }
 
         Ok(Paper {
@@ -146,19 +144,22 @@ impl Scraper {
             .map(|l| l.value().attr("href").unwrap().to_string())
             .collect::<Vec<Url>>();
 
-        let papers_bar_style = indicatif::ProgressStyle::with_template(
-            "[{elapsed_precise:.dim}] [{bar:50.cyan/blue}] {pos}/{len} ({eta})",
-        )
-        .unwrap()
-        .progress_chars("##.");
+        let papers_progress = self.config.progress_bars.add(
+            indicatif::ProgressBar::new(paper_links.len() as u64).with_style(
+                indicatif::ProgressStyle::with_template(
+                    "[{elapsed_precise:.dim}] [{bar:50.cyan/blue}] {pos}/{len} ({eta})",
+                )
+                .unwrap()
+                .progress_chars("##."),
+            ),
+        );
+        papers_progress.enable_steady_tick(std::time::Duration::from_millis(100));
 
         let mut papers = Vec::new();
-        for paper_link in paper_links
-            .into_iter()
-            .progress_with_style(papers_bar_style)
-            .with_finish(indicatif::ProgressFinish::Abandon)
-        {
+        for paper_link in paper_links {
+            papers_progress.inc(0);
             papers.push(self.scrape_paper(paper_link).await?);
+            papers_progress.inc(1);
         }
 
         let next_page_selector = scraper::Selector::parse("a.pagination-next").unwrap();
