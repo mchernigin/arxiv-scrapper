@@ -7,10 +7,12 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.75"
+bytes = "1.5.0"
 clap = { version = "4.4.3", features = ["derive"] }
 console = "0.15.7"
 futures = "0.3.28"
 indicatif = "0.17.6"
+lopdf = { version = "0.31.0", features = ["pom", "pom_parser"] }
 reqwest = "0.11.20"
 scraper = "0.17.1"
 serde = { version = "1.0.188", features = ["derive"] }

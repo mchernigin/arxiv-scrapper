@@ -1,4 +1,7 @@
 use indicatif::ProgressIterator;
+use std::io::Read;
+
+use crate::config;
 
 type Url = String;
 
@@ -14,21 +17,26 @@ pub struct Paper {
     authors: Vec<String>,
     description: String,
     subjects: Vec<String>,
-    document: String,
+    text: String,
 }
 
 #[derive(Debug)]
 pub struct Scraper {
     client: reqwest::Client,
+    config: config::Config,
 }
 
+#[derive(Debug)]
+pub struct Error {}
+
 impl Scraper {
-    pub fn new() -> Self {
+    pub fn new(config: config::Config) -> Self {
         Self {
             client: reqwest::Client::builder()
                 .user_agent("Googlebot")
                 .build()
                 .unwrap(),
+            config,
         }
     }
 
@@ -40,8 +48,39 @@ impl Scraper {
         Ok(dom)
     }
 
-    pub async fn scrape_paper(&self, url: Url) -> reqwest::Result<Paper> {
-        let dom = self.get_dom(url).await?;
+    async fn download_pdf(&self, url: Url) -> reqwest::Result<bytes::Bytes> {
+        let mut filename = url.trim_start_matches("https://arxiv.org/pdf/").to_string();
+        filename.push_str(".pdf");
+        let mut filepath = self.config.data_dir.clone();
+        filepath.push("pdfs");
+
+        tokio::fs::create_dir_all(filepath.clone()).await.unwrap();
+
+        filepath.push(filename);
+
+        if filepath.exists() {
+            let file = std::fs::File::open(filepath).unwrap();
+            let mut reader = std::io::BufReader::new(file);
+            let mut buffer = Vec::new();
+
+            reader.read_to_end(&mut buffer).unwrap();
+
+            return Ok(bytes::Bytes::from(buffer));
+        }
+
+        let response = self.client.get(url).send().await?;
+
+        println!("{filepath:?}");
+        let mut file = tokio::fs::File::create(filepath.clone()).await.unwrap();
+
+        let mut content = std::io::Cursor::new(response.bytes().await?);
+        tokio::io::copy(&mut content, &mut file).await.unwrap();
+
+        Ok(content.into_inner())
+    }
+
+    pub async fn scrape_paper(&self, abstract_url: Url) -> reqwest::Result<Paper> {
+        let dom = self.get_dom(abstract_url.clone()).await?;
 
         let title_selector = scraper::Selector::parse("h1.title").unwrap();
         let title_element = dom.select(&title_selector).next().unwrap();
@@ -74,12 +113,25 @@ impl Scraper {
             .map(|x| x.trim().to_string())
             .collect();
 
+        let pdf_url = abstract_url.replace("abs", "pdf");
+        let content = self.download_pdf(pdf_url).await?;
+        let document = lopdf::Document::load_mem(&content).expect("Can not load document");
+
+        let pages = document.get_pages();
+        let mut text = String::new();
+
+        for (i, _) in pages.iter().enumerate() {
+            let page_number = (i + 1) as u32;
+            let page_text = document.extract_text(&[page_number]);
+            text.push_str(&page_text.unwrap_or_default());
+        }
+
         Ok(Paper {
             title,
             authors,
             description,
             subjects,
-            document: "".to_string(),
+            text,
         })
     }
 
