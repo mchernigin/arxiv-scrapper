@@ -14,6 +14,7 @@ pub struct Paper {
     authors: Vec<String>,
     description: String,
     subjects: Vec<String>,
+    document: String,
 }
 
 #[derive(Debug)]
@@ -78,6 +79,7 @@ impl Scraper {
             authors,
             description,
             subjects,
+            document: "".to_string(),
         })
     }
 
