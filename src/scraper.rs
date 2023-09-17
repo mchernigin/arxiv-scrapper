@@ -25,8 +25,16 @@ pub struct Scraper {
     config: config::Config,
 }
 
-#[derive(Debug)]
-pub struct Error {}
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("network error")]
+    NetworkError(#[from] reqwest::Error),
+
+    #[error("file error")]
+    FileError(#[from] std::io::Error),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 impl Scraper {
     pub fn new(config: config::Config) -> Self {
@@ -39,7 +47,7 @@ impl Scraper {
         }
     }
 
-    async fn get_dom(&self, url: Url) -> reqwest::Result<scraper::Html> {
+    async fn get_dom(&self, url: Url) -> Result<scraper::Html> {
         let home_page = self.client.get(url).send().await?;
         let body = home_page.text().await?;
         let dom = scraper::Html::parse_document(&body);
@@ -47,42 +55,52 @@ impl Scraper {
         Ok(dom)
     }
 
-    async fn download_pdf(&self, url: Url) -> reqwest::Result<bytes::Bytes> {
+    async fn download_pdf(&self, url: Url) -> Result<bytes::Bytes> {
         let mut filename = url.trim_start_matches("https://arxiv.org/pdf/").to_string();
         filename.push_str(".pdf");
         let mut filepath = self.config.data_dir.clone();
         filepath.push("pdfs");
 
-        tokio::fs::create_dir_all(filepath.clone()).await.unwrap();
+        tokio::fs::create_dir_all(filepath.clone()).await?;
 
         filepath.push(filename);
 
         if filepath.exists() {
-            let file = std::fs::File::open(filepath).unwrap();
+            let file = std::fs::File::open(filepath)?;
             let mut reader = std::io::BufReader::new(file);
             let mut buffer = Vec::new();
 
-            reader.read_to_end(&mut buffer).unwrap();
+            reader.read_to_end(&mut buffer)?;
 
             return Ok(bytes::Bytes::from(buffer));
         }
 
         let response = self.client.get(url).send().await?;
 
-        let mut file = tokio::fs::File::create(filepath.clone()).await.unwrap();
+        let mut file = tokio::fs::File::create(filepath.clone()).await?;
 
         let mut content = std::io::Cursor::new(response.bytes().await?);
-        tokio::io::copy(&mut content, &mut file).await.unwrap();
+        tokio::io::copy(&mut content, &mut file).await?;
 
         Ok(content.into_inner())
     }
 
-    pub async fn scrape_paper(&self, abstract_url: Url) -> reqwest::Result<Paper> {
+    pub async fn scrape_paper(&self, abstract_url: Url) -> Result<Paper> {
         let dom = self.get_dom(abstract_url.clone()).await?;
 
         let title_selector = scraper::Selector::parse("h1.title").unwrap();
-        let title_element = dom.select(&title_selector).next().unwrap();
-        let title = title_element.text().last().unwrap().to_string();
+        let title = dom
+            .select(&title_selector)
+            .next()
+            .map(|el| {
+                el.text()
+                    .collect::<String>()
+                    .trim()
+                    .trim_start_matches("Title:")
+                    .trim_start()
+                    .to_string()
+            })
+            .unwrap_or_default();
 
         let authors_selector = scraper::Selector::parse(".authors > a").unwrap();
         let authors_elements = dom.select(&authors_selector).collect::<Vec<_>>();
@@ -92,24 +110,32 @@ impl Scraper {
             .collect::<Vec<_>>();
 
         let description_selector = scraper::Selector::parse("blockquote.abstract").unwrap();
-        let description_element = dom.select(&description_selector).next().unwrap();
-        let description = description_element
-            .text()
-            .collect::<String>()
-            .trim()
-            .trim_start_matches("Abstract:")
-            .trim_start()
-            .replace("\n", " ")
-            .to_string();
+        let description = dom
+            .select(&description_selector)
+            .next()
+            .map(|el| {
+                el.text()
+                    .collect::<String>()
+                    .trim()
+                    .trim_start_matches("Abstract:")
+                    .trim_start()
+                    .replace('\n', " ")
+                    .to_string()
+            })
+            .unwrap_or_default();
 
         let subjects_selector = scraper::Selector::parse("td.subjects").unwrap();
-        let subjects_element = dom.select(&subjects_selector).next().unwrap();
-        let subjects = subjects_element
-            .text()
-            .collect::<String>()
-            .split(';')
-            .map(|x| x.trim().to_string())
-            .collect();
+        let subjects = dom
+            .select(&subjects_selector)
+            .next()
+            .map(|el| {
+                el.text()
+                    .collect::<String>()
+                    .split(';')
+                    .map(|x| x.trim().to_string())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         let pdf_url = abstract_url.replace("abs", "pdf");
         let content = self.download_pdf(pdf_url).await?;
@@ -133,7 +159,7 @@ impl Scraper {
         })
     }
 
-    pub async fn scrape_page(&self, url: Url) -> reqwest::Result<Page> {
+    pub async fn scrape_page(&self, url: Url) -> Result<Page> {
         let home_page = self.client.get(url).send().await?;
         let body = home_page.text().await?;
         let dom = scraper::Html::parse_document(&body);
@@ -166,8 +192,8 @@ impl Scraper {
         let mut next_page_url = None;
         if let Some(next_page_href) = dom.select(&next_page_selector).next() {
             let mut next_page = "https://arxiv.org".to_string();
-            let next_page_href = next_page_href.value().attr("href").unwrap().to_string();
-            next_page.push_str(&next_page_href);
+            let next_page_href = next_page_href.value().attr("href").unwrap();
+            next_page.push_str(next_page_href);
 
             next_page_url = Some(next_page);
         }
