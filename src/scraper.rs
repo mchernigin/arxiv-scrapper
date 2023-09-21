@@ -56,7 +56,7 @@ impl Scraper {
     }
 
     async fn download_pdf(&self, url: Url) -> Result<bytes::Bytes> {
-        let mut filename = url.trim_start_matches("https://arxiv.org/pdf/").to_string();
+        let mut filename = url.split('/').last().unwrap().to_string();
         filename.push_str(".pdf");
         let mut filepath = self.config.data_dir.clone();
         filepath.push("pdfs");
