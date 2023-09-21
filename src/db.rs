@@ -32,10 +32,39 @@ impl DBConnection {
     pub fn get_all_papers(&mut self) -> Result<Vec<models::Paper>> {
         use crate::schema::papers::dsl::*;
 
-        let result = papers
+        papers
             .select(models::Paper::as_select())
-            .load(&mut self.pg)?;
+            .load(&mut self.pg)
+            .map_err(|e| e.into())
+    }
 
-        Ok(result)
+    pub fn add_paper(&mut self, paper: models::NewPaper) -> Result<models::Paper> {
+        use crate::schema::papers;
+
+        diesel::insert_into(papers::table)
+            .values(&paper)
+            .returning(models::Paper::as_returning())
+            .get_result(&mut self.pg)
+            .map_err(|e| e.into())
+    }
+
+    pub fn add_author(&mut self, author: models::NewAuthor) -> Result<models::Author> {
+        use crate::schema::authors;
+
+        diesel::insert_into(authors::table)
+            .values(&author)
+            .returning(models::Author::as_returning())
+            .get_result(&mut self.pg)
+            .map_err(|e| e.into())
+    }
+
+    pub fn add_category(&mut self, category: models::NewCategory) -> Result<models::Categories> {
+        use crate::schema::categories;
+
+        diesel::insert_into(categories::table)
+            .values(&category)
+            .returning(models::Categories::as_returning())
+            .get_result(&mut self.pg)
+            .map_err(|e| e.into())
     }
 }
