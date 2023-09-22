@@ -19,14 +19,14 @@ CREATE TABLE paper_author (
 );
 
 
-CREATE TABLE categories (
+CREATE TABLE subjects (
   id SERIAL PRIMARY KEY,
   name VARCHAR NOT NULL
 );
 
-CREATE TABLE paper_category (
+CREATE TABLE paper_subject (
   paper_id INTEGER REFERENCES papers (id),
-  category_id INTEGER REFERENCES papers (id),
-  PRIMARY KEY (paper_id, category_id)
+  subject_id INTEGER REFERENCES papers (id),
+  PRIMARY KEY (paper_id, subject_id)
 );
 

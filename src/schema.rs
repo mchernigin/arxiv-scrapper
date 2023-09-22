@@ -8,13 +8,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    categories (id) {
-        id -> Int4,
-        name -> Varchar,
-    }
-}
-
-diesel::table! {
     paper_author (paper_id, author_id) {
         paper_id -> Int4,
         author_id -> Int4,
@@ -22,9 +15,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    paper_category (paper_id, category_id) {
+    paper_subject (paper_id, subject_id) {
         paper_id -> Int4,
-        category_id -> Int4,
+        subject_id -> Int4,
     }
 }
 
@@ -37,10 +30,17 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    subjects (id) {
+        id -> Int4,
+        name -> Varchar,
+    }
+}
+
 diesel::allow_tables_to_appear_in_same_query!(
     authors,
-    categories,
     paper_author,
-    paper_category,
+    paper_subject,
     papers,
+    subjects,
 );

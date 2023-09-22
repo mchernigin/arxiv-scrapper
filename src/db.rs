@@ -60,10 +60,10 @@ impl DBConnection {
             .map_err(|e| e.into())
     }
 
-    pub fn insert_category(&mut self, category: models::NewCategory) -> Result<models::Id> {
-        use crate::schema::categories::dsl::*;
+    pub fn insert_subject(&mut self, category: models::NewSubject) -> Result<models::Id> {
+        use crate::schema::subjects::dsl::*;
 
-        diesel::insert_into(categories)
+        diesel::insert_into(subjects)
             .values(&category)
             .returning(id)
             .on_conflict_do_nothing()
@@ -81,10 +81,10 @@ impl DBConnection {
     }
 
     pub fn set_paper_category(&mut self, paper: models::Id, category: models::Id) -> Result<usize> {
-        use crate::schema::paper_category::dsl::*;
+        use crate::schema::paper_subject::dsl::*;
 
-        diesel::insert_into(paper_category)
-            .values((paper_id.eq(paper), category_id.eq(category)))
+        diesel::insert_into(paper_subject)
+            .values((paper_id.eq(paper), subject_id.eq(category)))
             .execute(&mut self.pg)
             .map_err(|e| e.into())
     }

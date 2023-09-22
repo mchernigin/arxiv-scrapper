@@ -169,7 +169,7 @@ impl Scraper {
 
         let subjects_ids = subjects
             .into_iter()
-            .map(|s| self.db.insert_category(models::NewCategory { name: &s }))
+            .map(|s| self.db.insert_subject(models::NewSubject { name: &s }))
             .collect::<db::Result<Vec<_>>>()?;
 
         _ = subjects_ids
