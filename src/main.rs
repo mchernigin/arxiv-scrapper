@@ -11,9 +11,7 @@ async fn main() -> anyhow::Result<()> {
     let cfg = config::Config::parse();
 
     let mut db = db::DBConnection::new()?;
-    let papers = db.get_all_papers()?;
-    println!("{:#?}", papers);
-    let mut scraper = scraper::Scraper::new(cfg.clone(), db);
+    let mut scraper = scraper::Scraper::new(cfg.clone(), &mut db);
 
     let start_url: String = format!(
         "https://arxiv.org/search/advanced?advanced=&terms-0-operator=AND&terms-0-term=&terms-0-field=title&classification-computer_science=y&classification-physics_archives=all&classification-include_cross_list=include&date-filter_by=all_dates&date-year=&date-from_date=&date-to_date=&date-date_type=submitted_date&abstracts=show&size={}&order=announced_date_first",
@@ -36,7 +34,6 @@ async fn main() -> anyhow::Result<()> {
 
     let mut current_url = start_url;
     for _ in 0..cfg.max_pages {
-        pages_progress.inc(0);
         let next_page_url = scraper.scrape_page(current_url.to_string()).await?;
 
         if let Some(next_page_url) = next_page_url {
@@ -46,6 +43,10 @@ async fn main() -> anyhow::Result<()> {
         }
         pages_progress.inc(1);
     }
+
+    drop(pages_progress);
+
+    println!("Total number of papers in database: {}", db.count_papers()?);
 
     Ok(())
 }

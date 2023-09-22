@@ -6,25 +6,10 @@ use crate::models;
 
 type Url = String;
 
-#[derive(Debug, serde::Serialize)]
-pub struct Page {
-    pub papers: Vec<Paper>,
-    pub next_page_url: Option<Url>,
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct Paper {
-    title: String,
-    authors: Vec<String>,
-    description: String,
-    subjects: Vec<String>,
-    text: String,
-}
-
-pub struct Scraper {
+pub struct Scraper<'a> {
     client: reqwest::Client,
     config: config::Config,
-    db: db::DBConnection,
+    db: &'a mut db::DBConnection,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -41,8 +26,8 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl Scraper {
-    pub fn new(config: config::Config, db: db::DBConnection) -> Self {
+impl<'a> Scraper<'a> {
+    pub fn new(config: config::Config, db: &'a mut db::DBConnection) -> Scraper<'a> {
         Self {
             client: reqwest::Client::builder()
                 .user_agent("Googlebot")
@@ -91,8 +76,9 @@ impl Scraper {
         Ok(content.into_inner())
     }
 
-    pub async fn scrape_paper(&mut self, abstract_url: Url) -> Result<()> {
-        let dom = self.get_dom(abstract_url.clone()).await?;
+    pub async fn scrape_paper(&mut self, url: Url) -> Result<()> {
+        let dom = self.get_dom(url.clone()).await?;
+        let submission = extract_submission_from_url(&url);
 
         let title_selector = scraper::Selector::parse("h1.title").unwrap();
         let title = dom
@@ -123,7 +109,7 @@ impl Scraper {
             })
             .unwrap_or_default();
 
-        let pdf_url = abstract_url.replace("abs", "pdf");
+        let pdf_url = url.replace("abs", "pdf");
         let content = self.download_pdf(pdf_url).await?;
 
         let mut body = String::new();
@@ -137,6 +123,7 @@ impl Scraper {
         }
 
         let paper_id = self.db.insert_paper(models::NewPaper {
+            submission,
             title: &title,
             body: &body,
             description: &description,
@@ -203,8 +190,10 @@ impl Scraper {
 
         let mut papers = Vec::new();
         for paper_link in paper_links {
-            papers_progress.inc(0);
-            papers.push(self.scrape_paper(paper_link).await?);
+            let submission = extract_submission_from_url(&paper_link);
+            if !self.db.paper_exists(submission)? {
+                papers.push(self.scrape_paper(paper_link).await?);
+            }
             papers_progress.inc(1);
         }
 
@@ -220,4 +209,8 @@ impl Scraper {
 
         Ok(next_page_url)
     }
+}
+
+fn extract_submission_from_url(url: &Url) -> &str {
+    url.split('/').last().unwrap()
 }

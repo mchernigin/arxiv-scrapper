@@ -24,6 +24,7 @@ diesel::table! {
 diesel::table! {
     papers (id) {
         id -> Int4,
+        submission -> Varchar,
         title -> Varchar,
         description -> Text,
         body -> Text,

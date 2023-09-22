@@ -7,6 +7,7 @@ pub type Id = i32;
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Paper {
     pub id: Id,
+    pub submission: String,
     pub title: String,
     pub description: String,
     pub body: String,
@@ -53,6 +54,7 @@ pub struct PaperSubject {
 #[derive(Insertable)]
 #[diesel(table_name = crate::schema::papers)]
 pub struct NewPaper<'a> {
+    pub submission: &'a str,
     pub title: &'a str,
     pub body: &'a str,
     pub description: &'a str,

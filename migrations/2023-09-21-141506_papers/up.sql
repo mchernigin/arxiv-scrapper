@@ -1,6 +1,7 @@
 -- Your SQL goes here
 CREATE TABLE papers (
   id SERIAL PRIMARY KEY,
+  submission VARCHAR NOT NULL UNIQUE,
   title VARCHAR NOT NULL,
   description TEXT NOT NULL,
   body TEXT NOT NULL

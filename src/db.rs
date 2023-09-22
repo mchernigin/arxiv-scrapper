@@ -29,6 +29,7 @@ impl DBConnection {
         })
     }
 
+    #[allow(dead_code)]
     pub fn get_all_papers(&mut self) -> Result<Vec<models::Paper>> {
         use crate::schema::papers::dsl::*;
 
@@ -38,8 +39,36 @@ impl DBConnection {
             .map_err(|e| e.into())
     }
 
+    pub fn count_papers(&mut self) -> Result<i64> {
+        use crate::schema::papers::dsl::*;
+
+        papers
+            .count()
+            .get_result(&mut self.pg)
+            .map_err(|e| e.into())
+    }
+
+    pub fn paper_exists(&mut self, s: &str) -> Result<bool> {
+        use crate::schema::papers::dsl::*;
+
+        let count = papers
+            .count()
+            .filter(submission.eq(s))
+            .get_result::<i64>(&mut self.pg)?;
+
+        Ok(count > 0)
+    }
+
     pub fn insert_paper(&mut self, paper: models::NewPaper) -> Result<models::Id> {
         use crate::schema::papers::dsl::*;
+
+        if let Ok(existing_paper_id) = papers
+            .select(id)
+            .filter(submission.eq(paper.submission))
+            .get_result::<models::Id>(&mut self.pg)
+        {
+            return Ok(existing_paper_id);
+        }
 
         diesel::insert_into(papers)
             .values(&paper)
@@ -55,7 +84,6 @@ impl DBConnection {
         diesel::insert_into(authors)
             .values(&author)
             .returning(id)
-            .on_conflict_do_nothing()
             .get_result(&mut self.pg)
             .map_err(|e| e.into())
     }
@@ -66,7 +94,6 @@ impl DBConnection {
         diesel::insert_into(subjects)
             .values(&category)
             .returning(id)
-            .on_conflict_do_nothing()
             .get_result(&mut self.pg)
             .map_err(|e| e.into())
     }
