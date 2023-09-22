@@ -2,6 +2,7 @@
 CREATE TABLE papers (
   id SERIAL PRIMARY KEY,
   title VARCHAR NOT NULL,
+  description TEXT NOT NULL,
   body TEXT NOT NULL
 );
 
@@ -12,8 +13,9 @@ CREATE TABLE authors (
 );
 
 CREATE TABLE paper_author (
-  paper_id INTEGER PRIMARY KEY REFERENCES papers (id),
-  author_id INTEGER REFERENCES papers (id) NOT NULL
+  paper_id INTEGER REFERENCES papers (id),
+  author_id INTEGER REFERENCES papers (id),
+  PRIMARY KEY (paper_id, author_id)
 );
 
 
@@ -23,7 +25,8 @@ CREATE TABLE categories (
 );
 
 CREATE TABLE paper_category (
-  paper_id INTEGER PRIMARY KEY REFERENCES papers (id),
-  category_id INTEGER REFERENCES papers (id) NOT NULL
+  paper_id INTEGER REFERENCES papers (id),
+  category_id INTEGER REFERENCES papers (id),
+  PRIMARY KEY (paper_id, category_id)
 );
 

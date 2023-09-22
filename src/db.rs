@@ -38,33 +38,54 @@ impl DBConnection {
             .map_err(|e| e.into())
     }
 
-    pub fn add_paper(&mut self, paper: models::NewPaper) -> Result<models::Paper> {
-        use crate::schema::papers;
+    pub fn insert_paper(&mut self, paper: models::NewPaper) -> Result<models::Id> {
+        use crate::schema::papers::dsl::*;
 
-        diesel::insert_into(papers::table)
+        diesel::insert_into(papers)
             .values(&paper)
-            .returning(models::Paper::as_returning())
+            .returning(id)
+            .on_conflict_do_nothing()
             .get_result(&mut self.pg)
             .map_err(|e| e.into())
     }
 
-    pub fn add_author(&mut self, author: models::NewAuthor) -> Result<models::Author> {
-        use crate::schema::authors;
+    pub fn insert_author(&mut self, author: models::NewAuthor) -> Result<models::Id> {
+        use crate::schema::authors::dsl::*;
 
-        diesel::insert_into(authors::table)
+        diesel::insert_into(authors)
             .values(&author)
-            .returning(models::Author::as_returning())
+            .returning(id)
+            .on_conflict_do_nothing()
             .get_result(&mut self.pg)
             .map_err(|e| e.into())
     }
 
-    pub fn add_category(&mut self, category: models::NewCategory) -> Result<models::Categories> {
-        use crate::schema::categories;
+    pub fn insert_category(&mut self, category: models::NewCategory) -> Result<models::Id> {
+        use crate::schema::categories::dsl::*;
 
-        diesel::insert_into(categories::table)
+        diesel::insert_into(categories)
             .values(&category)
-            .returning(models::Categories::as_returning())
+            .returning(id)
+            .on_conflict_do_nothing()
             .get_result(&mut self.pg)
+            .map_err(|e| e.into())
+    }
+
+    pub fn set_paper_author(&mut self, paper: models::Id, author: models::Id) -> Result<usize> {
+        use crate::schema::paper_author::dsl::*;
+
+        diesel::insert_into(paper_author)
+            .values((paper_id.eq(paper), author_id.eq(author)))
+            .execute(&mut self.pg)
+            .map_err(|e| e.into())
+    }
+
+    pub fn set_paper_category(&mut self, paper: models::Id, category: models::Id) -> Result<usize> {
+        use crate::schema::paper_category::dsl::*;
+
+        diesel::insert_into(paper_category)
+            .values((paper_id.eq(paper), category_id.eq(category)))
+            .execute(&mut self.pg)
             .map_err(|e| e.into())
     }
 }

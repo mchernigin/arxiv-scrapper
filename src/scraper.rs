@@ -1,6 +1,8 @@
 use std::io::Read;
 
 use crate::config;
+use crate::db;
+use crate::models;
 
 type Url = String;
 
@@ -19,10 +21,10 @@ pub struct Paper {
     text: String,
 }
 
-#[derive(Debug)]
 pub struct Scraper {
     client: reqwest::Client,
     config: config::Config,
+    db: db::DBConnection,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -32,18 +34,22 @@ pub enum Error {
 
     #[error("file error")]
     FileError(#[from] std::io::Error),
+
+    #[error("database error")]
+    DatabaseError(#[from] db::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl Scraper {
-    pub fn new(config: config::Config) -> Self {
+    pub fn new(config: config::Config, db: db::DBConnection) -> Self {
         Self {
             client: reqwest::Client::builder()
                 .user_agent("Googlebot")
                 .build()
                 .unwrap(),
             config,
+            db,
         }
     }
 
@@ -85,7 +91,7 @@ impl Scraper {
         Ok(content.into_inner())
     }
 
-    pub async fn scrape_paper(&self, abstract_url: Url) -> Result<Paper> {
+    pub async fn scrape_paper(&mut self, abstract_url: Url) -> Result<()> {
         let dom = self.get_dom(abstract_url.clone()).await?;
 
         let title_selector = scraper::Selector::parse("h1.title").unwrap();
@@ -102,13 +108,6 @@ impl Scraper {
             })
             .unwrap_or_default();
 
-        let authors_selector = scraper::Selector::parse(".authors > a").unwrap();
-        let authors_elements = dom.select(&authors_selector).collect::<Vec<_>>();
-        let authors = authors_elements
-            .iter()
-            .map(|a| a.text().collect::<String>())
-            .collect::<Vec<_>>();
-
         let description_selector = scraper::Selector::parse("blockquote.abstract").unwrap();
         let description = dom
             .select(&description_selector)
@@ -124,12 +123,43 @@ impl Scraper {
             })
             .unwrap_or_default();
 
+        let pdf_url = abstract_url.replace("abs", "pdf");
+        let content = self.download_pdf(pdf_url).await?;
+
+        let mut body = String::new();
+        if let Ok(document) = lopdf::Document::load_mem(&content) {
+            let pages = document.get_pages();
+            for (i, _) in pages.iter().enumerate() {
+                let page_number = (i + 1) as u32;
+                let page_body = document.extract_text(&[page_number]);
+                body.push_str(&page_body.unwrap_or_default());
+            }
+        }
+
+        let paper_id = self.db.insert_paper(models::NewPaper {
+            title: &title,
+            body: &body,
+            description: &description,
+        })?;
+
+        let authors_selector = scraper::Selector::parse(".authors > a").unwrap();
+        let authors_elements = dom.select(&authors_selector).collect::<Vec<_>>();
+        let authors_ids = authors_elements
+            .iter()
+            .map(|a| a.text().collect::<String>())
+            .map(|a| self.db.insert_author(models::NewAuthor { name: &a }))
+            .collect::<db::Result<Vec<_>>>()?;
+
+        _ = authors_ids
+            .into_iter()
+            .map(|author_id| self.db.set_paper_author(paper_id, author_id));
+
         let subjects_selector = scraper::Selector::parse("td.subjects").unwrap();
         let subjects = dom
             .select(&subjects_selector)
             .next()
-            .map(|el| {
-                el.text()
+            .map(|s| {
+                s.text()
                     .collect::<String>()
                     .split(';')
                     .map(|x| x.trim().to_string())
@@ -137,29 +167,19 @@ impl Scraper {
             })
             .unwrap_or_default();
 
-        let pdf_url = abstract_url.replace("abs", "pdf");
-        let content = self.download_pdf(pdf_url).await?;
+        let subjects_ids = subjects
+            .into_iter()
+            .map(|s| self.db.insert_category(models::NewCategory { name: &s }))
+            .collect::<db::Result<Vec<_>>>()?;
 
-        let mut text = String::new();
-        if let Ok(document) = lopdf::Document::load_mem(&content) {
-            let pages = document.get_pages();
-            for (i, _) in pages.iter().enumerate() {
-                let page_number = (i + 1) as u32;
-                let page_text = document.extract_text(&[page_number]);
-                text.push_str(&page_text.unwrap_or_default());
-            }
-        }
+        _ = subjects_ids
+            .into_iter()
+            .map(|subject_id| self.db.set_paper_category(paper_id, subject_id));
 
-        Ok(Paper {
-            title,
-            authors,
-            description,
-            subjects,
-            text,
-        })
+        Ok(())
     }
 
-    pub async fn scrape_page(&self, url: Url) -> Result<Page> {
+    pub async fn scrape_page(&mut self, url: Url) -> Result<Option<String>> {
         let home_page = self.client.get(url).send().await?;
         let body = home_page.text().await?;
         let dom = scraper::Html::parse_document(&body);
@@ -198,9 +218,6 @@ impl Scraper {
             next_page_url = Some(next_page);
         }
 
-        Ok(Page {
-            papers,
-            next_page_url,
-        })
+        Ok(next_page_url)
     }
 }

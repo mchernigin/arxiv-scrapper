@@ -15,14 +15,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    paper_author (paper_id) {
+    paper_author (paper_id, author_id) {
         paper_id -> Int4,
         author_id -> Int4,
     }
 }
 
 diesel::table! {
-    paper_category (paper_id) {
+    paper_category (paper_id, category_id) {
         paper_id -> Int4,
         category_id -> Int4,
     }
@@ -32,6 +32,7 @@ diesel::table! {
     papers (id) {
         id -> Int4,
         title -> Varchar,
+        description -> Text,
         body -> Text,
     }
 }
