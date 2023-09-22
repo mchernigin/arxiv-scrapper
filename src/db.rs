@@ -1,7 +1,7 @@
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 
-use crate::models;
+use crate::models::{self, NewPaper, NewSubject};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -59,48 +59,83 @@ impl DBConnection {
         Ok(count > 0)
     }
 
-    pub fn insert_paper(&mut self, paper: models::NewPaper) -> Result<models::Id> {
+    pub fn insert_paper(
+        &mut self,
+        paper_submission: &str,
+        paper_title: &str,
+        paper_description: &str,
+        paper_body: &str,
+    ) -> Result<models::Id> {
         use crate::schema::papers::dsl::*;
 
-        if let Ok(existing_paper_id) = papers
+        let select_existing = papers
             .select(id)
-            .filter(submission.eq(paper.submission))
-            .get_result::<models::Id>(&mut self.pg)
-        {
-            return Ok(existing_paper_id);
-        }
-
-        diesel::insert_into(papers)
-            .values(&paper)
-            .returning(id)
-            .on_conflict_do_nothing()
+            .filter(submission.eq(paper_submission))
             .get_result(&mut self.pg)
-            .map_err(|e| e.into())
+            .ok();
+
+        match select_existing {
+            Some(existing_paper_id) => Ok(existing_paper_id),
+            None => diesel::insert_into(papers)
+                .values(&NewPaper {
+                    submission: paper_submission,
+                    title: paper_title,
+                    description: paper_description,
+                    body: paper_body,
+                })
+                .returning(id)
+                .on_conflict_do_nothing()
+                .get_result(&mut self.pg)
+                .map_err(|e| e.into()),
+        }
     }
 
-    pub fn insert_author(&mut self, author: models::NewAuthor) -> Result<models::Id> {
+    pub fn insert_author(&mut self, author_name: &str) -> Result<models::Id> {
         use crate::schema::authors::dsl::*;
 
-        diesel::insert_into(authors)
-            .values(&author)
-            .returning(id)
+        let select_exisiting = authors
+            .select(id)
+            .filter(name.eq(name))
             .get_result(&mut self.pg)
-            .map_err(|e| e.into())
+            .ok();
+
+        match select_exisiting {
+            Some(existing_author_id) => Ok(existing_author_id),
+            None => diesel::insert_into(authors)
+                .values(&models::NewAuthor { name: author_name })
+                .on_conflict(name)
+                .do_nothing()
+                .returning(id)
+                .get_result(&mut self.pg)
+                .map_err(|e| e.into()),
+        }
     }
 
-    pub fn insert_subject(&mut self, category: models::NewSubject) -> Result<models::Id> {
+    pub fn insert_subject(&mut self, subject_name: &str) -> Result<models::Id> {
         use crate::schema::subjects::dsl::*;
 
-        diesel::insert_into(subjects)
-            .values(&category)
-            .returning(id)
+        let select_exisiting = subjects
+            .select(id)
+            .filter(name.eq(subject_name))
             .get_result(&mut self.pg)
-            .map_err(|e| e.into())
+            .ok();
+
+        match select_exisiting {
+            Some(existing_subject_id) => Ok(existing_subject_id),
+            None => diesel::insert_into(subjects)
+                .values(&NewSubject { name: subject_name })
+                .on_conflict(name)
+                .do_nothing()
+                .returning(id)
+                .get_result(&mut self.pg)
+                .map_err(|e| e.into()),
+        }
     }
 
     pub fn set_paper_author(&mut self, paper: models::Id, author: models::Id) -> Result<usize> {
         use crate::schema::paper_author::dsl::*;
 
+        println!("\n\npapaer author\n\n");
         diesel::insert_into(paper_author)
             .values((paper_id.eq(paper), author_id.eq(author)))
             .execute(&mut self.pg)
@@ -110,6 +145,7 @@ impl DBConnection {
     pub fn set_paper_category(&mut self, paper: models::Id, category: models::Id) -> Result<usize> {
         use crate::schema::paper_subject::dsl::*;
 
+        println!("\n\npapaer category\n\n");
         diesel::insert_into(paper_subject)
             .values((paper_id.eq(paper), subject_id.eq(category)))
             .execute(&mut self.pg)

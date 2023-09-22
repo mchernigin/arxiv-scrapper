@@ -10,7 +10,7 @@ CREATE TABLE papers (
 
 CREATE TABLE authors (
   id SERIAL PRIMARY KEY,
-  name VARCHAR NOT NULL
+  name VARCHAR NOT NULL UNIQUE
 );
 
 CREATE TABLE paper_author (
@@ -22,7 +22,7 @@ CREATE TABLE paper_author (
 
 CREATE TABLE subjects (
   id SERIAL PRIMARY KEY,
-  name VARCHAR NOT NULL
+  name VARCHAR NOT NULL UNIQUE
 );
 
 CREATE TABLE paper_subject (
