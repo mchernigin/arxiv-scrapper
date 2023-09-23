@@ -121,18 +121,18 @@ impl Scraper {
         let dom = self.get_dom(url.clone()).await?;
         let submission = extract_submission_from_url(&url);
 
-        let title = &select_title(&dom).await;
-        let description = &select_description(&dom).await;
+        let title = &select_title(&dom);
+        let description = &select_description(&dom);
 
         let pdf_url = url.replace("abs", "pdf");
         let pdf = self.download_pdf(pdf_url).await?;
-        let body = &body_from_pdf(&pdf).await;
+        let body = &body_from_pdf(&pdf);
 
         let mut db = self.db.lock().unwrap();
 
         let paper_id = db.insert_paper(submission, title, description, body)?;
 
-        let authors = select_authors(&dom).await?;
+        let authors = select_authors(&dom)?;
         _ = authors
             .iter()
             .map(|name| db.insert_author(name))
@@ -140,7 +140,7 @@ impl Scraper {
             .into_iter()
             .map(|author_id| db.set_paper_author(paper_id, author_id));
 
-        let subjects = select_subjects(&dom).await?;
+        let subjects = select_subjects(&dom)?;
         _ = subjects
             .iter()
             .map(|name| db.insert_subject(name))
@@ -177,11 +177,9 @@ impl Scraper {
         for paper_link in paper_links {
             let export_link = paper_link.replace("arxiv.org", "export.arxiv.org");
             let submission = extract_submission_from_url(&export_link);
-            if self.db.lock().unwrap().paper_exists(submission)? {
-                papers_progress.inc(1);
-                continue;
+            if !!!self.db.lock().unwrap().paper_exists(submission)? {
+                paper_futures.push(self.scrape_paper(export_link));
             }
-            paper_futures.push(self.scrape_paper(export_link));
             papers_progress.inc(1);
         }
 
@@ -205,7 +203,7 @@ fn extract_submission_from_url(url: &Url) -> &str {
     url.split('/').last().unwrap()
 }
 
-async fn select_title(dom: &scraper::Html) -> String {
+fn select_title(dom: &scraper::Html) -> String {
     let title_selector = scraper::Selector::parse("h1.title").unwrap();
     dom.select(&title_selector)
         .next()
@@ -220,7 +218,7 @@ async fn select_title(dom: &scraper::Html) -> String {
         .unwrap_or_default()
 }
 
-async fn select_description(dom: &scraper::Html) -> String {
+fn select_description(dom: &scraper::Html) -> String {
     let description_selector = scraper::Selector::parse("blockquote.abstract").unwrap();
     dom.select(&description_selector)
         .next()
@@ -236,7 +234,7 @@ async fn select_description(dom: &scraper::Html) -> String {
         .unwrap_or_default()
 }
 
-async fn select_authors(dom: &scraper::Html) -> Result<Vec<String>> {
+fn select_authors(dom: &scraper::Html) -> Result<Vec<String>> {
     let authors_selector = scraper::Selector::parse(".authors > a").unwrap();
     let authors_elements = dom.select(&authors_selector).collect::<Vec<_>>();
     let authors = authors_elements
@@ -247,7 +245,7 @@ async fn select_authors(dom: &scraper::Html) -> Result<Vec<String>> {
     Ok(authors)
 }
 
-async fn select_subjects(dom: &scraper::Html) -> Result<Vec<String>> {
+fn select_subjects(dom: &scraper::Html) -> Result<Vec<String>> {
     let subjects_selector = scraper::Selector::parse("td.subjects").unwrap();
     let subjects = dom
         .select(&subjects_selector)
@@ -264,7 +262,7 @@ async fn select_subjects(dom: &scraper::Html) -> Result<Vec<String>> {
     Ok(subjects)
 }
 
-async fn body_from_pdf(pdf: &bytes::Bytes) -> String {
+fn body_from_pdf(pdf: &bytes::Bytes) -> String {
     let mut body = String::new();
     if let Ok(document) = lopdf::Document::load_mem(pdf) {
         let pages = document.get_pages();
