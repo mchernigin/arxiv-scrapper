@@ -7,6 +7,8 @@ pub struct Scraper<'a> {
     client: reqwest::Client,
     config: config::Config,
     db: &'a mut db::DBConnection,
+    last_request: std::time::Instant,
+    burst_count: u8,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -32,19 +34,49 @@ impl<'a> Scraper<'a> {
                 .unwrap(),
             config,
             db,
+            last_request: std::time::Instant::now(),
+            burst_count: 0,
         }
     }
 
-    async fn get_dom(&self, url: Url) -> Result<scraper::Html> {
-        let home_page = self.client.get(url).send().await?;
+    async fn get(&mut self, url: Url) -> reqwest::Result<reqwest::Response> {
+        const BURST_SIZE: u8 = 4;
+        let now = std::time::Instant::now();
+
+        let since_last_request = now - self.last_request;
+        if self.burst_count >= BURST_SIZE {
+            if since_last_request < std::time::Duration::from_secs(1) {
+                std::thread::sleep(std::time::Duration::from_secs(1) - since_last_request);
+            }
+            self.burst_count = 0;
+        }
+        self.last_request = now;
+        self.burst_count += 1;
+
+        self.client.get(url).send().await
+    }
+
+    async fn get_dom(&mut self, url: Url) -> Result<scraper::Html> {
+        let home_page = self.get(url).await?;
         let body = home_page.text().await?;
         let dom = scraper::Html::parse_document(&body);
 
         Ok(dom)
     }
 
-    async fn download_pdf(&self, url: Url) -> Result<bytes::Bytes> {
-        let response = self.client.get(url).send().await?;
+    async fn download_pdf(&mut self, url: Url) -> Result<bytes::Bytes> {
+        let download_progress = self.config.progress_bars.add(
+            indicatif::ProgressBar::new(self.config.max_pages as u64).with_style(
+                indicatif::ProgressStyle::with_template(
+                    "[{elapsed_precise:.dim}] [{bar:50.cyan/blue}] {pos}/{len} ({eta})",
+                )
+                .unwrap()
+                .progress_chars("##."),
+            ),
+        );
+        download_progress.enable_steady_tick(std::time::Duration::from_millis(100));
+
+        let response = self.get(url).await?;
         let content = response.bytes().await?;
 
         Ok(content)
@@ -61,7 +93,7 @@ impl<'a> Scraper<'a> {
         let pdf = self.download_pdf(pdf_url).await?;
         let body = &body_from_pdf(&pdf).await;
 
-        let paper_id = self.db.insert_paper(submission, title, body, description)?;
+        let paper_id = self.db.insert_paper(submission, title, description, body)?;
 
         let authors = select_authors(&dom).await?;
         _ = authors
@@ -83,7 +115,7 @@ impl<'a> Scraper<'a> {
     }
 
     pub async fn scrape_page(&mut self, url: Url) -> Result<Option<String>> {
-        let home_page = self.client.get(url).send().await?;
+        let home_page = self.get(url).await?;
         let body = home_page.text().await?;
         let dom = scraper::Html::parse_document(&body);
 
@@ -106,9 +138,10 @@ impl<'a> Scraper<'a> {
 
         let mut papers = Vec::new();
         for paper_link in paper_links {
-            let submission = extract_submission_from_url(&paper_link);
+            let export_link = paper_link.replace("arxiv.org", "export.arxiv.org");
+            let submission = extract_submission_from_url(&export_link);
             if !self.db.paper_exists(submission)? {
-                papers.push(self.scrape_paper(paper_link).await?);
+                papers.push(self.scrape_paper(export_link).await?);
             }
             papers_progress.inc(1);
         }
