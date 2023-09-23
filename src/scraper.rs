@@ -234,5 +234,10 @@ async fn body_from_pdf(pdf: &bytes::Bytes) -> String {
         }
     }
 
-    body
+    fix_line_breaks(body)
+}
+
+fn fix_line_breaks(text: String) -> String {
+    let rg = regex::Regex::new(r"(\w)- (\w)").unwrap();
+    rg.replace_all(&text, "$1$2").to_string()
 }
