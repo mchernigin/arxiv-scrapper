@@ -66,7 +66,17 @@ impl Scraper {
         drop(burst_count);
         drop(last_request);
 
-        self.client.get(url).send().await
+        let mut backoff = std::time::Duration::from_secs(1);
+        loop {
+            let response = self.client.get(&url).send().await;
+            if response.is_err() {
+                // std::thread::sleep(backoff); // TODO
+                backoff *= 2;
+                continue;
+            }
+
+            return response;
+        }
     }
 
     async fn get_dom(&self, url: Url) -> Result<scraper::Html> {
@@ -79,7 +89,7 @@ impl Scraper {
 
     async fn download_pdf(&self, url: Url) -> Result<bytes::Bytes> {
         let response = self.get(url).await?;
-        let total_size = response.content_length().unwrap();
+        let total_size = response.content_length().unwrap_or(std::u64::MAX);
 
         let download_progress = self.config.progress_bars.add(
             indicatif::ProgressBar::new(total_size).with_style(
