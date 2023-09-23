@@ -1,6 +1,8 @@
 use crate::config;
 use crate::db;
 
+use futures_util::StreamExt;
+
 type Url = String;
 
 pub struct Scraper<'a> {
@@ -65,10 +67,13 @@ impl<'a> Scraper<'a> {
     }
 
     async fn download_pdf(&mut self, url: Url) -> Result<bytes::Bytes> {
+        let response = self.get(url).await?;
+        let total_size = response.content_length().unwrap();
+
         let download_progress = self.config.progress_bars.add(
-            indicatif::ProgressBar::new(self.config.max_pages as u64).with_style(
+            indicatif::ProgressBar::new(total_size).with_style(
                 indicatif::ProgressStyle::with_template(
-                    "[{elapsed_precise:.dim}] [{bar:50.cyan/blue}] {pos}/{len} ({eta})",
+                    "[{elapsed_precise:.dim}] [{bar:50.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
                 )
                 .unwrap()
                 .progress_chars("##."),
@@ -76,10 +81,19 @@ impl<'a> Scraper<'a> {
         );
         download_progress.enable_steady_tick(std::time::Duration::from_millis(100));
 
-        let response = self.get(url).await?;
-        let content = response.bytes().await?;
+        let mut stream = response.bytes_stream();
+        let mut downloaded = 0;
+        let mut chunks = Vec::new();
 
-        Ok(content)
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.unwrap();
+            let new = std::cmp::min(downloaded + (chunk.len() as u64), total_size);
+            downloaded = new;
+            download_progress.set_position(new);
+            chunks.push(chunk);
+        }
+
+        Ok(bytes::Bytes::from(chunks.concat()))
     }
 
     pub async fn scrape_paper(&mut self, url: Url) -> Result<()> {
