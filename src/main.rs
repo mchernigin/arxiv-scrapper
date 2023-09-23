@@ -10,8 +10,7 @@ mod scraper;
 async fn main() -> anyhow::Result<()> {
     let cfg = config::Config::parse();
 
-    let mut db = db::DBConnection::new()?;
-    let mut scraper = scraper::Scraper::new(cfg.clone(), &mut db);
+    let mut scraper = scraper::Scraper::new(cfg.clone())?;
 
     let start_url: String = format!(
         "https://arxiv.org/search/advanced?advanced=&terms-0-operator=AND&terms-0-term=&terms-0-field=title&classification-computer_science=y&classification-physics_archives=all&classification-include_cross_list=include&date-filter_by=all_dates&date-year=&date-from_date=&date-to_date=&date-date_type=submitted_date&abstracts=show&size={}&order=-announced_date_first",
@@ -23,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
         .add(
             indicatif::ProgressBar::new(cfg.max_pages as u64).with_style(
                 indicatif::ProgressStyle::with_template(
-                    "[{elapsed_precise:.dim}] [{bar:50.cyan/blue}] {pos}/{len} ({eta})",
+                    "[{elapsed_precise:.dim}] [{bar:50.cyan/blue}] {pos}/{len}",
                 )
                 .unwrap()
                 .progress_chars("##."),
@@ -46,7 +45,10 @@ async fn main() -> anyhow::Result<()> {
 
     drop(pages_progress);
 
-    println!("Total number of papers in database: {}", db.count_papers()?);
+    println!(
+        "Total number of papers in database: {}",
+        scraper.get_total_papers()?
+    );
 
     Ok(())
 }

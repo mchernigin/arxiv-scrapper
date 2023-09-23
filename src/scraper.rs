@@ -2,15 +2,16 @@ use crate::config;
 use crate::db;
 
 use futures_util::StreamExt;
+use std::sync::{Arc, Mutex};
 
 type Url = String;
 
-pub struct Scraper<'a> {
+pub struct Scraper {
     client: reqwest::Client,
     config: config::Config,
-    db: &'a mut db::DBConnection,
-    last_request: std::time::Instant,
-    burst_count: u8,
+    db: Arc<Mutex<db::DBConnection>>,
+    last_request: Arc<Mutex<std::time::Instant>>,
+    burst_count: Arc<Mutex<u8>>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -27,46 +28,56 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl<'a> Scraper<'a> {
-    pub fn new(config: config::Config, db: &'a mut db::DBConnection) -> Scraper<'a> {
-        Self {
+impl Scraper {
+    pub fn new(config: config::Config) -> Result<Scraper> {
+        Ok(Self {
             client: reqwest::Client::builder()
                 .user_agent("Googlebot")
                 .build()
                 .unwrap(),
             config,
-            db,
-            last_request: std::time::Instant::now(),
-            burst_count: 0,
-        }
+            db: Arc::new(Mutex::new(db::DBConnection::new()?)),
+            last_request: Arc::new(Mutex::new(std::time::Instant::now())),
+            burst_count: Arc::new(Mutex::new(0)),
+        })
     }
 
-    async fn get(&mut self, url: Url) -> reqwest::Result<reqwest::Response> {
+    pub fn get_total_papers(&self) -> Result<i64> {
+        self.db.lock().unwrap().count_papers().map_err(|e| e.into())
+    }
+
+    async fn get(&self, url: Url) -> reqwest::Result<reqwest::Response> {
         const BURST_SIZE: u8 = 4;
+        let mut burst_count = self.burst_count.lock().unwrap();
+        let mut last_request = self.last_request.lock().unwrap();
+
         let now = std::time::Instant::now();
 
-        let since_last_request = now - self.last_request;
-        if self.burst_count >= BURST_SIZE {
+        let since_last_request = now - *last_request;
+        if *burst_count >= BURST_SIZE {
             if since_last_request < std::time::Duration::from_secs(1) {
                 std::thread::sleep(std::time::Duration::from_secs(1) - since_last_request);
             }
-            self.burst_count = 0;
+            *burst_count = 0;
         }
-        self.last_request = now;
-        self.burst_count += 1;
+        *last_request = now;
+        *burst_count += 1;
+
+        drop(burst_count);
+        drop(last_request);
 
         self.client.get(url).send().await
     }
 
-    async fn get_dom(&mut self, url: Url) -> Result<scraper::Html> {
-        let home_page = self.get(url).await?;
-        let body = home_page.text().await?;
+    async fn get_dom(&self, url: Url) -> Result<scraper::Html> {
+        let response = self.get(url).await?;
+        let body = response.text().await?;
         let dom = scraper::Html::parse_document(&body);
 
         Ok(dom)
     }
 
-    async fn download_pdf(&mut self, url: Url) -> Result<bytes::Bytes> {
+    async fn download_pdf(&self, url: Url) -> Result<bytes::Bytes> {
         let response = self.get(url).await?;
         let total_size = response.content_length().unwrap();
 
@@ -96,7 +107,7 @@ impl<'a> Scraper<'a> {
         Ok(bytes::Bytes::from(chunks.concat()))
     }
 
-    pub async fn scrape_paper(&mut self, url: Url) -> Result<()> {
+    pub async fn scrape_paper(&self, url: Url) -> Result<()> {
         let dom = self.get_dom(url.clone()).await?;
         let submission = extract_submission_from_url(&url);
 
@@ -107,23 +118,25 @@ impl<'a> Scraper<'a> {
         let pdf = self.download_pdf(pdf_url).await?;
         let body = &body_from_pdf(&pdf).await;
 
-        let paper_id = self.db.insert_paper(submission, title, description, body)?;
+        let mut db = self.db.lock().unwrap();
+
+        let paper_id = db.insert_paper(submission, title, description, body)?;
 
         let authors = select_authors(&dom).await?;
         _ = authors
             .iter()
-            .map(|name| self.db.insert_author(name))
+            .map(|name| db.insert_author(name))
             .collect::<db::Result<Vec<_>>>()?
             .into_iter()
-            .map(|author_id| self.db.set_paper_author(paper_id, author_id));
+            .map(|author_id| db.set_paper_author(paper_id, author_id));
 
         let subjects = select_subjects(&dom).await?;
         _ = subjects
             .iter()
-            .map(|name| self.db.insert_subject(name))
+            .map(|name| db.insert_subject(name))
             .collect::<db::Result<Vec<_>>>()?
             .into_iter()
-            .map(|subject_id| self.db.set_paper_category(paper_id, subject_id));
+            .map(|subject_id| db.set_paper_category(paper_id, subject_id));
 
         Ok(())
     }
@@ -150,15 +163,19 @@ impl<'a> Scraper<'a> {
         );
         papers_progress.enable_steady_tick(std::time::Duration::from_millis(100));
 
-        let mut papers = Vec::new();
+        let mut paper_futures = Vec::new();
         for paper_link in paper_links {
             let export_link = paper_link.replace("arxiv.org", "export.arxiv.org");
             let submission = extract_submission_from_url(&export_link);
-            if !self.db.paper_exists(submission)? {
-                papers.push(self.scrape_paper(export_link).await?);
+            if self.db.lock().unwrap().paper_exists(submission)? {
+                papers_progress.inc(1);
+                continue;
             }
+            paper_futures.push(self.scrape_paper(export_link));
             papers_progress.inc(1);
         }
+
+        futures::future::try_join_all(paper_futures).await?;
 
         let next_page_selector = scraper::Selector::parse("a.pagination-next").unwrap();
         let mut next_page_url = None;
