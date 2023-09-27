@@ -6,7 +6,7 @@ pub struct Config {
     pub start_page: usize,
 
     /// Set maximum number of pages to scrape
-    #[arg(short, long, value_name = "PAGE", default_value_t = 1)]
+    #[arg(short = 'n', long, value_name = "PAGE", default_value_t = 1)]
     pub max_pages: usize,
 
     /// Number of papers on page
@@ -16,7 +16,4 @@ pub struct Config {
     /// Data directory
     #[arg(short, long, value_name = "FILE", default_value = "data")]
     pub data_dir: std::path::PathBuf,
-
-    #[clap(skip)]
-    pub progress_bars: indicatif::MultiProgress,
 }

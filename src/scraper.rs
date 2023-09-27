@@ -12,6 +12,7 @@ pub struct Scraper {
     db: Arc<Mutex<db::DBConnection>>,
     last_request: Arc<Mutex<std::time::Instant>>,
     burst_count: Arc<Mutex<u8>>,
+    pub progress_bars: indicatif::MultiProgress,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -30,15 +31,23 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 impl Scraper {
     pub fn new(config: config::Config) -> Result<Scraper> {
+        let client = reqwest::Client::builder()
+            .user_agent("Googlebot")
+            .build()
+            .unwrap();
+        let db = Arc::new(Mutex::new(db::DBConnection::new()?));
+        let last_request = Arc::new(Mutex::new(std::time::Instant::now()));
+        let burst_count = Arc::new(Mutex::new(0));
+        let progress_bars = indicatif::MultiProgress::new();
+        progress_bars.set_move_cursor(true);
+
         Ok(Self {
-            client: reqwest::Client::builder()
-                .user_agent("Googlebot")
-                .build()
-                .unwrap(),
+            client,
             config,
-            db: Arc::new(Mutex::new(db::DBConnection::new()?)),
-            last_request: Arc::new(Mutex::new(std::time::Instant::now())),
-            burst_count: Arc::new(Mutex::new(0)),
+            db,
+            last_request,
+            burst_count,
+            progress_bars,
         })
     }
 
@@ -91,13 +100,12 @@ impl Scraper {
         let response = self.get(url).await?;
         let total_size = response.content_length().unwrap_or(std::u64::MAX);
 
-        let download_progress = self.config.progress_bars.add(
+        let download_progress = self.progress_bars.add(
             indicatif::ProgressBar::new(total_size).with_style(
                 indicatif::ProgressStyle::with_template(
-                    "[{elapsed_precise:.dim}] [{bar:50.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
+                    "{bar:50.cyan/blue} {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
                 )
-                .unwrap()
-                .progress_chars("##."),
+                .unwrap(),
             ),
         );
         download_progress.enable_steady_tick(std::time::Duration::from_millis(100));
@@ -151,7 +159,7 @@ impl Scraper {
         Ok(())
     }
 
-    pub async fn scrape_page(&mut self, url: Url) -> Result<Option<String>> {
+    pub async fn scrape_page(&mut self, url: Url) -> Result<(Vec<Url>, Option<String>)> {
         let home_page = self.get(url).await?;
         let body = home_page.text().await?;
         let dom = scraper::Html::parse_document(&body);
@@ -161,29 +169,6 @@ impl Scraper {
             .select(&paper_link_selector)
             .map(|l| l.value().attr("href").unwrap().to_string())
             .collect::<Vec<Url>>();
-
-        let papers_progress = self.config.progress_bars.add(
-            indicatif::ProgressBar::new(paper_links.len() as u64).with_style(
-                indicatif::ProgressStyle::with_template(
-                    "[{elapsed_precise:.dim}] [{bar:50.cyan/blue}] {pos}/{len} ({eta})",
-                )
-                .unwrap()
-                .progress_chars("##."),
-            ),
-        );
-        papers_progress.enable_steady_tick(std::time::Duration::from_millis(100));
-
-        let mut paper_futures = Vec::new();
-        for paper_link in paper_links {
-            let export_link = paper_link.replace("arxiv.org", "export.arxiv.org");
-            let submission = extract_submission_from_url(&export_link);
-            if !!!self.db.lock().unwrap().paper_exists(submission)? {
-                paper_futures.push(self.scrape_paper(export_link));
-            }
-            papers_progress.inc(1);
-        }
-
-        futures::future::try_join_all(paper_futures).await?;
 
         let next_page_selector = scraper::Selector::parse("a.pagination-next").unwrap();
         let mut next_page_url = None;
@@ -195,7 +180,61 @@ impl Scraper {
             next_page_url = Some(next_page);
         }
 
-        Ok(next_page_url)
+        Ok((paper_links, next_page_url))
+    }
+
+    pub async fn scrape(&mut self, start_url: Url) -> Result<()> {
+        let pages_progress = indicatif::ProgressBar::new(self.config.max_pages as u64)
+            .with_style(
+                indicatif::ProgressStyle::with_template(
+                    "{elapsed_precise:.dim} {bar:50.cyan/blue} {pos}/{len}",
+                )
+                .unwrap(),
+            )
+            .with_message("Scrapping pages...");
+        pages_progress.enable_steady_tick(std::time::Duration::from_millis(100));
+
+        pages_progress.println(format!(
+            "{} Scrappping pages...",
+            console::style("[1/2]").bold().dim()
+        ));
+
+        let mut paper_links = Vec::new();
+        let mut current_url = start_url;
+        for _ in 0..self.config.max_pages {
+            let (page_paper_links, next_page_url) =
+                self.scrape_page(current_url.to_string()).await?;
+            paper_links.extend(page_paper_links.into_iter());
+
+            if let Some(next_page_url) = next_page_url {
+                current_url = next_page_url;
+            } else {
+                break;
+            }
+            pages_progress.inc(1);
+        }
+
+        let mut download_count = 0;
+        let mut paper_futures = Vec::new();
+        for paper_link in paper_links {
+            let export_link = paper_link.replace("arxiv.org", "export.arxiv.org");
+            let submission = extract_submission_from_url(&export_link);
+            if !!!self.db.lock().unwrap().paper_exists(submission)? {
+                download_count += 1;
+                paper_futures.push(self.scrape_paper(export_link));
+            }
+        }
+
+        drop(pages_progress);
+
+        println!(
+            "{} Downloading {download_count} pages...",
+            console::style("[2/2]").bold().dim()
+        );
+
+        futures::future::try_join_all(paper_futures).await?;
+
+        Ok(())
     }
 }
 
