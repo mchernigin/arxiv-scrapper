@@ -7,15 +7,15 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.75"
-bytes = "1.5.0"
 clap = { version = "4.4.3", features = ["derive"] }
 console = "0.15.7"
 diesel = { version = "2.1.1", features = ["postgres"] }
 dotenvy = "0.15.7"
 futures = "0.3.28"
 futures-util = "0.3.28"
+glib = "0.18.2"
 indicatif = "0.17.6"
-lopdf = { version = "0.31.0", features = ["pom", "pom_parser"] }
+poppler-rs = { version = "0.22.0", features = ["v0_82"] }
 regex = "1.9.5"
 reqwest = { version = "0.11.20", features = ["stream"] }
 scraper = "0.17.1"

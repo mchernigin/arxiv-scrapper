@@ -2,7 +2,8 @@ use crate::config;
 use crate::db;
 
 use futures_util::StreamExt;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 type Url = String;
 
@@ -18,13 +19,13 @@ pub struct Scraper {
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("network error")]
-    NetworkError(#[from] reqwest::Error),
+    Network(#[from] reqwest::Error),
 
     #[error("file error")]
-    FileError(#[from] std::io::Error),
+    File(#[from] std::io::Error),
 
     #[error("database error")]
-    DatabaseError(#[from] db::Error),
+    Database(#[from] db::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -51,14 +52,14 @@ impl Scraper {
         })
     }
 
-    pub fn get_total_papers(&self) -> Result<i64> {
-        self.db.lock().unwrap().count_papers().map_err(|e| e.into())
+    pub async fn get_total_papers(&self) -> Result<i64> {
+        self.db.lock().await.count_papers().map_err(|e| e.into())
     }
 
-    async fn get(&self, url: Url) -> reqwest::Result<reqwest::Response> {
+    async fn get(&self, url: &Url) -> reqwest::Result<reqwest::Response> {
         const BURST_SIZE: u8 = 4;
-        let mut burst_count = self.burst_count.lock().unwrap();
-        let mut last_request = self.last_request.lock().unwrap();
+        let mut burst_count = self.burst_count.lock().await;
+        let mut last_request = self.last_request.lock().await;
 
         let now = std::time::Instant::now();
 
@@ -77,7 +78,7 @@ impl Scraper {
 
         let mut backoff = std::time::Duration::from_secs(1);
         loop {
-            let response = self.client.get(&url).send().await;
+            let response = self.client.get(url).send().await;
             if response.is_err() {
                 // std::thread::sleep(backoff); // TODO
                 backoff *= 2;
@@ -89,25 +90,28 @@ impl Scraper {
     }
 
     async fn get_dom(&self, url: Url) -> Result<scraper::Html> {
-        let response = self.get(url).await?;
+        let response = self.get(&url).await?;
         let body = response.text().await?;
         let dom = scraper::Html::parse_document(&body);
 
         Ok(dom)
     }
 
-    async fn download_pdf(&self, url: Url) -> Result<bytes::Bytes> {
-        let response = self.get(url).await?;
+    async fn download_pdf(&self, url: Url) -> Result<glib::Bytes> {
+        let response = self.get(&url).await?;
         let total_size = response.content_length().unwrap_or(std::u64::MAX);
 
-        let download_progress = self.progress_bars.add(
-            indicatif::ProgressBar::new(total_size).with_style(
-                indicatif::ProgressStyle::with_template(
-                    "{bar:50.cyan/blue} {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
-                )
-                .unwrap(),
-            ),
-        );
+        let download_progress = self
+            .progress_bars
+            .add(
+                indicatif::ProgressBar::new(total_size).with_style(
+                    indicatif::ProgressStyle::with_template(
+                        "{msg:43} {bar:50.cyan/blue} {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
+                    )
+                    .unwrap(),
+                ),
+            )
+            .with_message(url);
         download_progress.enable_steady_tick(std::time::Duration::from_millis(100));
 
         let mut stream = response.bytes_stream();
@@ -122,7 +126,7 @@ impl Scraper {
             chunks.push(chunk);
         }
 
-        Ok(bytes::Bytes::from(chunks.concat()))
+        Ok(glib::Bytes::from_owned(chunks.concat()))
     }
 
     pub async fn scrape_paper(&self, url: Url) -> Result<()> {
@@ -133,10 +137,10 @@ impl Scraper {
         let description = &select_description(&dom);
 
         let pdf_url = url.replace("abs", "pdf");
-        let pdf = self.download_pdf(pdf_url).await?;
-        let body = &body_from_pdf(&pdf);
+        let pdf_bytes = self.download_pdf(pdf_url).await?;
+        let body = &body_from_pdf(&pdf_bytes);
 
-        let mut db = self.db.lock().unwrap();
+        let mut db = self.db.lock().await;
 
         let paper_id = db.insert_paper(submission, title, description, body)?;
 
@@ -160,7 +164,7 @@ impl Scraper {
     }
 
     pub async fn scrape_page(&mut self, url: Url) -> Result<(Vec<Url>, Option<String>)> {
-        let home_page = self.get(url).await?;
+        let home_page = self.get(&url).await?;
         let body = home_page.text().await?;
         let dom = scraper::Html::parse_document(&body);
 
@@ -219,7 +223,7 @@ impl Scraper {
         for paper_link in paper_links {
             let export_link = paper_link.replace("arxiv.org", "export.arxiv.org");
             let submission = extract_submission_from_url(&export_link);
-            if !!!self.db.lock().unwrap().paper_exists(submission)? {
+            if !self.db.lock().await.paper_exists(submission)? {
                 download_count += 1;
                 paper_futures.push(self.scrape_paper(export_link));
             }
@@ -301,14 +305,15 @@ fn select_subjects(dom: &scraper::Html) -> Result<Vec<String>> {
     Ok(subjects)
 }
 
-fn body_from_pdf(pdf: &bytes::Bytes) -> String {
+fn body_from_pdf(bytes: &glib::Bytes) -> String {
     let mut body = String::new();
-    if let Ok(document) = lopdf::Document::load_mem(pdf) {
-        let pages = document.get_pages();
-        for (i, _) in pages.iter().enumerate() {
-            let page_number = (i + 1) as u32;
-            let page_body = document.extract_text(&[page_number]);
-            body.push_str(&page_body.unwrap_or_default());
+    if let Ok(pdf) = poppler::Document::from_bytes(bytes, None) {
+        let n = pdf.n_pages();
+        for i in 0..n {
+            if let Some(text) = pdf.page(i).and_then(|page| page.text()) {
+                body.push_str(text.as_str());
+                body.push(' ');
+            }
         }
     }
 
@@ -316,6 +321,6 @@ fn body_from_pdf(pdf: &bytes::Bytes) -> String {
 }
 
 fn fix_line_breaks(text: String) -> String {
-    let rg = regex::Regex::new(r"(\w)- (\w)").unwrap();
+    let rg = regex::Regex::new(r"(\w)-\n(\w)").unwrap();
     rg.replace_all(&text, "$1$2").to_string()
 }

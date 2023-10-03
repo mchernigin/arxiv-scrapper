@@ -6,10 +6,10 @@ use crate::models::{self, NewPaper, NewSubject};
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("database connection error")]
-    ConnectionError(#[from] diesel::result::ConnectionError),
+    Connection(#[from] diesel::result::ConnectionError),
 
     #[error("database query error")]
-    QueryError(#[from] diesel::result::Error),
+    Query(#[from] diesel::result::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

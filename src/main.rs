@@ -28,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
         date-date_type=submitted_date&\
         abstracts=show&\
         size={}&\
-        order=-announced_date_first&\
+        order=announced_date_first&\
         start={}",
         cfg.papers_per_page,
         cfg.start_page * cfg.papers_per_page
@@ -38,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!(
         "Done: total number of papers in database: {}",
-        scraper.get_total_papers()?
+        scraper.get_total_papers().await?
     );
 
     Ok(())
