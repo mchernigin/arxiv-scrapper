@@ -238,7 +238,11 @@ impl Scraper {
             console::style("[2/2]").bold().dim()
         );
 
-        futures::future::try_join_all(paper_futures).await?;
+        let stream = futures::stream::iter(paper_futures)
+            .buffer_unordered(25)
+            .collect::<Vec<_>>();
+
+        stream.await.into_iter().collect::<Result<Vec<_>>>()?;
 
         Ok(())
     }
