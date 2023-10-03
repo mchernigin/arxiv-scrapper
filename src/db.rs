@@ -95,7 +95,7 @@ impl DBConnection {
 
         let select_exisiting = authors
             .select(id)
-            .filter(name.eq(name))
+            .filter(name.eq(author_name))
             .get_result(&mut self.pg)
             .ok();
 
@@ -135,7 +135,6 @@ impl DBConnection {
     pub fn set_paper_author(&mut self, paper: models::Id, author: models::Id) -> Result<usize> {
         use crate::schema::paper_author::dsl::*;
 
-        println!("\n\npapaer author\n\n");
         diesel::insert_into(paper_author)
             .values((paper_id.eq(paper), author_id.eq(author)))
             .execute(&mut self.pg)
@@ -145,7 +144,6 @@ impl DBConnection {
     pub fn set_paper_category(&mut self, paper: models::Id, category: models::Id) -> Result<usize> {
         use crate::schema::paper_subject::dsl::*;
 
-        println!("\n\npapaer category\n\n");
         diesel::insert_into(paper_subject)
             .values((paper_id.eq(paper), subject_id.eq(category)))
             .execute(&mut self.pg)

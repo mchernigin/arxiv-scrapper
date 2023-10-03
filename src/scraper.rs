@@ -150,7 +150,8 @@ impl Scraper {
             .map(|name| db.insert_author(name))
             .collect::<db::Result<Vec<_>>>()?
             .into_iter()
-            .map(|author_id| db.set_paper_author(paper_id, author_id));
+            .map(|author_id| db.set_paper_author(paper_id, author_id))
+            .collect::<db::Result<Vec<_>>>()?;
 
         let subjects = select_subjects(&dom)?;
         _ = subjects
@@ -158,7 +159,8 @@ impl Scraper {
             .map(|name| db.insert_subject(name))
             .collect::<db::Result<Vec<_>>>()?
             .into_iter()
-            .map(|subject_id| db.set_paper_category(paper_id, subject_id));
+            .map(|subject_id| db.set_paper_category(paper_id, subject_id))
+            .collect::<db::Result<Vec<_>>>()?;
 
         Ok(())
     }

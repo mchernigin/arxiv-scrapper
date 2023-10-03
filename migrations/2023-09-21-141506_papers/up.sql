@@ -15,7 +15,7 @@ CREATE TABLE authors (
 
 CREATE TABLE paper_author (
   paper_id INTEGER REFERENCES papers (id),
-  author_id INTEGER REFERENCES papers (id),
+  author_id INTEGER REFERENCES authors (id),
   PRIMARY KEY (paper_id, author_id)
 );
 
@@ -27,7 +27,7 @@ CREATE TABLE subjects (
 
 CREATE TABLE paper_subject (
   paper_id INTEGER REFERENCES papers (id),
-  subject_id INTEGER REFERENCES papers (id),
+  subject_id INTEGER REFERENCES subjects (id),
   PRIMARY KEY (paper_id, subject_id)
 );
 

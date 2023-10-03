@@ -38,6 +38,11 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(paper_author -> authors (author_id));
+diesel::joinable!(paper_author -> papers (paper_id));
+diesel::joinable!(paper_subject -> papers (paper_id));
+diesel::joinable!(paper_subject -> subjects (subject_id));
+
 diesel::allow_tables_to_appear_in_same_query!(
     authors,
     paper_author,
