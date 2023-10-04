@@ -13,7 +13,6 @@ pub struct Scraper {
     db: Arc<Mutex<db::DBConnection>>,
     last_request: Arc<Mutex<std::time::Instant>>,
     burst_count: Arc<Mutex<u8>>,
-    pub progress_bars: indicatif::MultiProgress,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -30,6 +29,8 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+type SharedProgress = Arc<Mutex<indicatif::ProgressBar>>;
+
 impl Scraper {
     pub fn new(config: config::Config) -> Result<Scraper> {
         let client = reqwest::Client::builder()
@@ -39,8 +40,6 @@ impl Scraper {
         let db = Arc::new(Mutex::new(db::DBConnection::new()?));
         let last_request = Arc::new(Mutex::new(std::time::Instant::now()));
         let burst_count = Arc::new(Mutex::new(0));
-        let progress_bars = indicatif::MultiProgress::new();
-        progress_bars.set_move_cursor(true);
 
         Ok(Self {
             client,
@@ -48,7 +47,6 @@ impl Scraper {
             db,
             last_request,
             burst_count,
-            progress_bars,
         })
     }
 
@@ -99,37 +97,10 @@ impl Scraper {
 
     async fn download_pdf(&self, url: Url) -> Result<glib::Bytes> {
         let response = self.get(&url).await?;
-        let total_size = response.content_length().unwrap_or(std::u64::MAX);
-
-        let download_progress = self
-            .progress_bars
-            .add(
-                indicatif::ProgressBar::new(total_size).with_style(
-                    indicatif::ProgressStyle::with_template(
-                        "{msg:45} {bar:50.cyan/blue} {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
-                    )
-                    .unwrap(),
-                ),
-            )
-            .with_message(url);
-        download_progress.enable_steady_tick(std::time::Duration::from_millis(100));
-
-        let mut stream = response.bytes_stream();
-        let mut downloaded = 0;
-        let mut chunks = Vec::new();
-
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.unwrap();
-            let new = std::cmp::min(downloaded + (chunk.len() as u64), total_size);
-            downloaded = new;
-            download_progress.set_position(new);
-            chunks.push(chunk);
-        }
-
-        Ok(glib::Bytes::from_owned(chunks.concat()))
+        Ok(glib::Bytes::from_owned(response.bytes().await?))
     }
 
-    pub async fn scrape_paper(&self, url: Url) -> Result<()> {
+    pub async fn scrape_paper(&self, url: Url, sp: &SharedProgress) -> Result<()> {
         let dom = self.get_dom(url.clone()).await?;
         let submission = extract_submission_from_url(&url);
 
@@ -161,6 +132,8 @@ impl Scraper {
             .into_iter()
             .map(|subject_id| db.set_paper_category(paper_id, subject_id))
             .collect::<db::Result<Vec<_>>>()?;
+
+        sp.lock().await.inc(1);
 
         Ok(())
     }
@@ -201,7 +174,7 @@ impl Scraper {
         pages_progress.enable_steady_tick(std::time::Duration::from_millis(100));
 
         pages_progress.println(format!(
-            "{} Scrappping pages...",
+            "{} Searching for new papers...",
             console::style("[1/2]").bold().dim()
         ));
 
@@ -221,23 +194,36 @@ impl Scraper {
         }
 
         let mut download_count = 0;
-        let mut paper_futures = Vec::new();
+        let mut paper_urls = Vec::new();
         for paper_link in paper_links {
             let export_link = paper_link.replace("arxiv.org", "export.arxiv.org");
             let submission = extract_submission_from_url(&export_link);
             if !self.db.lock().await.paper_exists(submission)? {
                 download_count += 1;
-                paper_futures.push(self.scrape_paper(export_link));
+                paper_urls.push(export_link);
             }
         }
 
         drop(pages_progress);
 
         println!(
-            "{} Downloading {download_count} papers...",
+            "{} Scrapping {download_count} papers...",
             console::style("[2/2]").bold().dim()
         );
 
+        let total_progress = indicatif::ProgressBar::new(download_count).with_style(
+            indicatif::ProgressStyle::with_template(
+                "{elapsed_precise:.dim} {bar:50.cyan/blue} {pos}/{len}",
+            )
+            .unwrap(),
+        );
+        total_progress.enable_steady_tick(std::time::Duration::from_millis(100));
+
+        let amtp = Arc::new(Mutex::new(total_progress));
+
+        let paper_futures = paper_urls
+            .into_iter()
+            .map(|url| self.scrape_paper(url, &amtp));
         let stream = futures::stream::iter(paper_futures)
             .buffer_unordered(25)
             .collect::<Vec<_>>();
