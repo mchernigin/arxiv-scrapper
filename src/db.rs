@@ -53,7 +53,7 @@ impl DBConnection {
 
         let count = papers
             .count()
-            .filter(submission.eq(s))
+            .filter(url.eq(s))
             .get_result::<i64>(&mut self.pg)?;
 
         Ok(count > 0)
@@ -61,7 +61,7 @@ impl DBConnection {
 
     pub fn insert_paper(
         &mut self,
-        paper_submission: &str,
+        paper_url: &str,
         paper_title: &str,
         paper_description: &str,
         paper_body: &str,
@@ -70,20 +70,20 @@ impl DBConnection {
 
         let select_existing = papers
             .select(id)
-            .filter(submission.eq(paper_submission))
+            .filter(url.eq(paper_url))
             .get_result(&mut self.pg)
             .ok();
 
         match select_existing {
             Some(existing_paper_id) => {
-                log::trace!("DB: paper already exists {paper_submission:?}");
+                log::trace!("DB: paper already exists {paper_url:?}");
                 Ok(existing_paper_id)
             }
             None => {
-                log::trace!("DB: inserting new paper {paper_submission:?}");
+                log::trace!("DB: inserting new paper {paper_url:?}");
                 diesel::insert_into(papers)
                     .values(&NewPaper {
-                        submission: paper_submission,
+                        url: paper_url,
                         title: paper_title,
                         description: paper_description,
                         body: paper_body,

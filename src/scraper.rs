@@ -103,7 +103,6 @@ impl Scraper {
 
     pub async fn scrape_paper(&self, url: Url, sp: &SharedProgress) -> Result<()> {
         let dom = self.get_dom(url.clone()).await?;
-        let submission = extract_submission_from_url(&url);
 
         let title = &select_title(&dom);
         let description = &select_description(&dom);
@@ -118,7 +117,7 @@ impl Scraper {
 
         let mut db = self.db.lock().await;
 
-        let paper_id = db.insert_paper(submission, title, description, body)?;
+        let paper_id = db.insert_paper(&url, title, description, body)?;
 
         let authors = select_authors(&dom)?;
         _ = authors
@@ -183,12 +182,12 @@ impl Scraper {
             console::style("[1/2]").bold().dim()
         ));
 
-        let mut paper_links = Vec::new();
+        let mut paper_urls = Vec::new();
         let mut current_url = start_url;
         for _ in 0..self.config.max_pages {
-            let (page_paper_links, next_page_url) =
+            let (page_paper_urls, next_page_url) =
                 self.scrape_page(current_url.to_string()).await?;
-            paper_links.extend(page_paper_links.into_iter());
+            paper_urls.extend(page_paper_urls.into_iter());
 
             if let Some(next_page_url) = next_page_url {
                 current_url = next_page_url;
@@ -198,35 +197,34 @@ impl Scraper {
             pages_progress.inc(1);
         }
 
-        let mut download_count = 0;
-        let mut paper_urls = Vec::new();
-        for paper_link in paper_links {
-            let export_link = paper_link.replace("arxiv.org", "export.arxiv.org");
-            let submission = extract_submission_from_url(&export_link);
-            if !self.db.lock().await.paper_exists(submission)? {
-                download_count += 1;
-                paper_urls.push(export_link);
+        let mut paper_urls_to_download = Vec::new();
+        for paper_url in paper_urls {
+            let export_url = paper_url.replace("arxiv.org", "export.arxiv.org");
+            if !self.db.lock().await.paper_exists(&export_url)? {
+                paper_urls_to_download.push(export_url);
             }
         }
 
         drop(pages_progress);
 
         println!(
-            "{} Scrapping {download_count} papers...",
-            console::style("[2/2]").bold().dim()
+            "{} Scrapping {} papers...",
+            console::style("[2/2]").bold().dim(),
+            paper_urls_to_download.len()
         );
 
-        let total_progress = indicatif::ProgressBar::new(download_count).with_style(
-            indicatif::ProgressStyle::with_template(
-                "{elapsed_precise:.dim} {bar:50.cyan/blue} {pos}/{len}",
-            )
-            .unwrap(),
-        );
+        let total_progress = indicatif::ProgressBar::new(paper_urls_to_download.len() as u64)
+            .with_style(
+                indicatif::ProgressStyle::with_template(
+                    "{elapsed_precise:.dim} {bar:50.cyan/blue} {pos}/{len}",
+                )
+                .unwrap(),
+            );
         total_progress.enable_steady_tick(std::time::Duration::from_millis(100));
 
         let amtp = Arc::new(Mutex::new(total_progress));
 
-        let paper_futures = paper_urls
+        let paper_futures = paper_urls_to_download
             .into_iter()
             .map(|url| self.scrape_paper(url, &amtp));
         let stream = futures::stream::iter(paper_futures)
@@ -237,10 +235,6 @@ impl Scraper {
 
         Ok(())
     }
-}
-
-fn extract_submission_from_url(url: &Url) -> &str {
-    url.split('/').last().unwrap()
 }
 
 fn select_title(dom: &scraper::Html) -> String {
