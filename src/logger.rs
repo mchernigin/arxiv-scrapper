@@ -10,7 +10,7 @@ pub fn init(filepath: &str) -> anyhow::Result<()> {
             ))
         })
         .level(log::LevelFilter::Warn)
-        .level_for("search_arxiv", log::LevelFilter::Trace)
+        .level_for("searxiv", log::LevelFilter::Trace)
         .chain(fern::log_file(filepath)?)
         .apply()?;
 

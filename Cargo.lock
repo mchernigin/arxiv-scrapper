@@ -1450,7 +1450,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "search-arxiv"
+name = "searxiv"
 version = "0.1.0"
 dependencies = [
  "anyhow",
