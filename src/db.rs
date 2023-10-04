@@ -75,18 +75,24 @@ impl DBConnection {
             .ok();
 
         match select_existing {
-            Some(existing_paper_id) => Ok(existing_paper_id),
-            None => diesel::insert_into(papers)
-                .values(&NewPaper {
-                    submission: paper_submission,
-                    title: paper_title,
-                    description: paper_description,
-                    body: paper_body,
-                })
-                .returning(id)
-                .on_conflict_do_nothing()
-                .get_result(&mut self.pg)
-                .map_err(|e| e.into()),
+            Some(existing_paper_id) => {
+                log::trace!("DB: paper already exists {paper_submission:?}");
+                Ok(existing_paper_id)
+            }
+            None => {
+                log::trace!("DB: inserting new paper {paper_submission:?}");
+                diesel::insert_into(papers)
+                    .values(&NewPaper {
+                        submission: paper_submission,
+                        title: paper_title,
+                        description: paper_description,
+                        body: paper_body,
+                    })
+                    .returning(id)
+                    .on_conflict_do_nothing()
+                    .get_result(&mut self.pg)
+                    .map_err(|e| e.into())
+            }
         }
     }
 
@@ -100,14 +106,20 @@ impl DBConnection {
             .ok();
 
         match select_exisiting {
-            Some(existing_author_id) => Ok(existing_author_id),
-            None => diesel::insert_into(authors)
-                .values(&models::NewAuthor { name: author_name })
-                .on_conflict(name)
-                .do_nothing()
-                .returning(id)
-                .get_result(&mut self.pg)
-                .map_err(|e| e.into()),
+            Some(existing_author_id) => {
+                log::trace!("DB: author already exists {author_name:?}");
+                Ok(existing_author_id)
+            }
+            None => {
+                log::trace!("DB: inserting new author {author_name:?}");
+                diesel::insert_into(authors)
+                    .values(&models::NewAuthor { name: author_name })
+                    .on_conflict(name)
+                    .do_nothing()
+                    .returning(id)
+                    .get_result(&mut self.pg)
+                    .map_err(|e| e.into())
+            }
         }
     }
 
@@ -121,14 +133,20 @@ impl DBConnection {
             .ok();
 
         match select_existing {
-            Some(existing_subject_id) => Ok(existing_subject_id),
-            None => diesel::insert_into(subjects)
-                .values(&NewSubject { name: subject_name })
-                .on_conflict(name)
-                .do_nothing()
-                .returning(id)
-                .get_result(&mut self.pg)
-                .map_err(|e| e.into()),
+            Some(existing_subject_id) => {
+                log::trace!("DB: subject already exists {subject_name:?}");
+                Ok(existing_subject_id)
+            }
+            None => {
+                log::trace!("DB: inserting new subject {subject_name:?}");
+                diesel::insert_into(subjects)
+                    .values(&NewSubject { name: subject_name })
+                    .on_conflict(name)
+                    .do_nothing()
+                    .returning(id)
+                    .get_result(&mut self.pg)
+                    .map_err(|e| e.into())
+            }
         }
     }
 

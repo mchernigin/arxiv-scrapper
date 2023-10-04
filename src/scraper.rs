@@ -76,6 +76,7 @@ impl Scraper {
 
         let mut backoff = std::time::Duration::from_secs(1);
         loop {
+            log::trace!("Reqwest: GET {url:?}");
             let response = self.client.get(url).send().await;
             if response.is_err() {
                 // std::thread::sleep(backoff); // TODO
@@ -110,6 +111,10 @@ impl Scraper {
         let pdf_url = url.replace("abs", "pdf");
         let pdf_bytes = self.download_pdf(pdf_url).await?;
         let body = &body_from_pdf(&pdf_bytes);
+
+        if body.is_empty() {
+            log::warn!("PDF: empty body {url:?}")
+        }
 
         let mut db = self.db.lock().await;
 

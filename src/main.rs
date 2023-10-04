@@ -2,12 +2,15 @@ use clap::Parser;
 
 mod config;
 mod db;
+mod logger;
 mod models;
 mod schema;
 mod scraper;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    logger::init("searxiv.log")?;
+
     let cfg = config::Config::parse();
 
     let mut scraper = scraper::Scraper::new(cfg.clone())?;
