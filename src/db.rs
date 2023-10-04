@@ -114,13 +114,13 @@ impl DBConnection {
     pub fn insert_subject(&mut self, subject_name: &str) -> Result<models::Id> {
         use crate::schema::subjects::dsl::*;
 
-        let select_exisiting = subjects
+        let select_existing = subjects
             .select(id)
             .filter(name.eq(subject_name))
             .get_result(&mut self.pg)
             .ok();
 
-        match select_exisiting {
+        match select_existing {
             Some(existing_subject_id) => Ok(existing_subject_id),
             None => diesel::insert_into(subjects)
                 .values(&NewSubject { name: subject_name })
@@ -132,21 +132,39 @@ impl DBConnection {
         }
     }
 
-    pub fn set_paper_author(&mut self, paper: models::Id, author: models::Id) -> Result<usize> {
+    pub fn set_paper_author(&mut self, paper: models::Id, author: models::Id) -> Result<()> {
         use crate::schema::paper_author::dsl::*;
 
-        diesel::insert_into(paper_author)
-            .values((paper_id.eq(paper), author_id.eq(author)))
-            .execute(&mut self.pg)
-            .map_err(|e| e.into())
+        let select_existing: Option<(models::Id, models::Id)> = paper_author
+            .select((paper_id, author_id))
+            .filter(paper_id.eq(paper).and(author_id.eq(author)))
+            .get_result(&mut self.pg)
+            .ok();
+
+        if select_existing.is_none() {
+            diesel::insert_into(paper_author)
+                .values((paper_id.eq(paper), author_id.eq(author)))
+                .execute(&mut self.pg)?;
+        }
+
+        Ok(())
     }
 
-    pub fn set_paper_category(&mut self, paper: models::Id, category: models::Id) -> Result<usize> {
+    pub fn set_paper_category(&mut self, paper: models::Id, subject: models::Id) -> Result<()> {
         use crate::schema::paper_subject::dsl::*;
 
-        diesel::insert_into(paper_subject)
-            .values((paper_id.eq(paper), subject_id.eq(category)))
-            .execute(&mut self.pg)
-            .map_err(|e| e.into())
+        let select_existing: Option<(models::Id, models::Id)> = paper_subject
+            .select((paper_id, subject_id))
+            .filter(paper_id.eq(paper).and(subject_id.eq(subject)))
+            .get_result(&mut self.pg)
+            .ok();
+
+        if select_existing.is_none() {
+            diesel::insert_into(paper_subject)
+                .values((paper_id.eq(paper), subject_id.eq(subject)))
+                .execute(&mut self.pg)?;
+        }
+
+        Ok(())
     }
 }

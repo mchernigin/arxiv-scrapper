@@ -106,7 +106,7 @@ impl Scraper {
             .add(
                 indicatif::ProgressBar::new(total_size).with_style(
                     indicatif::ProgressStyle::with_template(
-                        "{msg:43} {bar:50.cyan/blue} {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
+                        "{msg:45} {bar:50.cyan/blue} {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
                     )
                     .unwrap(),
                 ),
@@ -234,7 +234,7 @@ impl Scraper {
         drop(pages_progress);
 
         println!(
-            "{} Downloading {download_count} pages...",
+            "{} Downloading {download_count} papers...",
             console::style("[2/2]").bold().dim()
         );
 
