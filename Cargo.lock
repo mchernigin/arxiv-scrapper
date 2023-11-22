@@ -94,6 +94,63 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4668cab20f66d8d020e1fbc0ebe47217433c1b6c8f2040faf858554e394ace6"
 
 [[package]]
+name = "arxiv-scrapper"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arxiv-shared",
+ "clap",
+ "console",
+ "diesel",
+ "dotenvy",
+ "futures",
+ "futures-util",
+ "glib",
+ "indicatif",
+ "log",
+ "poppler-rs",
+ "regex",
+ "reqwest",
+ "scraper",
+ "serde",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "arxiv-search"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arxiv-shared",
+ "clap",
+ "diesel",
+ "dotenvy",
+ "fern",
+ "futures",
+ "futures-util",
+ "glib",
+ "humantime",
+ "log",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "arxiv-shared"
+version = "0.1.0"
+dependencies = [
+ "diesel",
+ "dotenvy",
+ "log",
+ "thiserror",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1428,9 +1485,9 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "scraper"
-version = "0.17.1"
+version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c95a930e03325234c18c7071fd2b60118307e025d6fff3e12745ffbf63a3d29c"
+checksum = "585480e3719b311b78a573db1c9d9c4c1f8010c2dee4cc59c2efe58ea4dbc3e1"
 dependencies = [
  "ahash",
  "cssparser",
@@ -1439,34 +1496,7 @@ dependencies = [
  "html5ever",
  "once_cell",
  "selectors",
- "smallvec",
  "tendril",
-]
-
-[[package]]
-name = "searxiv"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "console",
- "diesel",
- "dotenvy",
- "fern",
- "futures",
- "futures-util",
- "glib",
- "humantime",
- "indicatif",
- "log",
- "poppler-rs",
- "regex",
- "reqwest",
- "scraper",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
 ]
 
 [[package]]

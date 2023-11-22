@@ -1,5 +1,5 @@
 use crate::config;
-use crate::db;
+use arxiv_shared::db;
 
 use futures_util::StreamExt;
 use std::sync::Arc;
