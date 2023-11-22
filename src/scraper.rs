@@ -117,6 +117,7 @@ impl Scraper {
 
         let mut db = self.db.lock().await;
 
+        // TODO: https://stackoverflow.com/questions/75939019/transactions-in-rust-diesel
         let paper_id = db.insert_paper(&url, title, description, body)?;
 
         let authors = select_authors(&dom)?;
@@ -312,6 +313,6 @@ fn body_from_pdf(bytes: &glib::Bytes) -> String {
 }
 
 fn fix_line_breaks(text: String) -> String {
-    let rg = regex::Regex::new(r"(\w)-\n(\w)").unwrap();
+    let rg = regex::Regex::new(r"(\w)-\n(\w)").unwrap(); // TODO: handle spaces
     rg.replace_all(&text, "$1$2").to_string()
 }
