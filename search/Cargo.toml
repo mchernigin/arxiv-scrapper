@@ -24,3 +24,4 @@ serde_json = "1.0.107"
 thiserror = "1.0.48"
 tokio = { version = "1.32.0", features = ["full"] }
 tantivy = { version = "0.21.1", features = ["zstd-compression"] }
+inquire = "0.6.2"

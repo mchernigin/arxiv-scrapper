@@ -2,8 +2,10 @@ use arxiv_shared::db;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
 use tantivy::query::QueryParser;
+use tantivy::schema::IndexRecordOption;
 use tantivy::schema::*;
 use tantivy::store::Compressor;
+use tantivy::tokenizer::StopWordFilter;
 use tantivy::{doc, Searcher};
 use tantivy::{DocAddress, Index, Score};
 
@@ -12,19 +14,27 @@ use tokio::sync::Mutex;
 
 pub struct Engine {
     schema: tantivy::schema::Schema,
-    index: Index,
+    _index: Index,
     searcher: Searcher,
     query_parser: QueryParser,
 }
 
 impl Engine {
     pub async fn new() -> anyhow::Result<Self> {
+        let options = TextOptions::default()
+            .set_indexing_options(
+                TextFieldIndexing::default()
+                    .set_tokenizer("searx")
+                    .set_index_option(IndexRecordOption::WithFreqs),
+            )
+            .set_stored();
+
         let mut schema_builder = Schema::builder();
         let id = schema_builder.add_u64_field("id", STORED);
         let url = schema_builder.add_text_field("url", STORED);
-        let title = schema_builder.add_text_field("title", TEXT | STORED);
-        let description = schema_builder.add_text_field("description", TEXT | STORED);
-        let body = schema_builder.add_text_field("body", TEXT);
+        let title = schema_builder.add_text_field("title", options.clone());
+        let description = schema_builder.add_text_field("description", options.clone());
+        let body = schema_builder.add_text_field("body", options.clone());
         let schema = schema_builder.build();
 
         let directory = MmapDirectory::open(std::env::current_dir()?.join("tantivy-index"))?;
@@ -40,6 +50,18 @@ impl Engine {
                 docstore_blocksize: 100_000, // TODO: figure out not random value
             },
         )?;
+
+        let stop_words = StopWordFilter::new(tantivy::tokenizer::Language::English).unwrap();
+        let tokenizer = tantivy::tokenizer::TextAnalyzer::builder(
+            tantivy::tokenizer::SimpleTokenizer::default(),
+        )
+        .filter(tantivy::tokenizer::LowerCaser)
+        .filter(stop_words)
+        .filter(tantivy::tokenizer::Stemmer::new(
+            tantivy::tokenizer::Language::English,
+        ))
+        .build();
+        index.tokenizers().register("searx", tokenizer);
 
         let mut index_writer = index.writer(100_000_000)?;
 
@@ -69,7 +91,7 @@ impl Engine {
 
         Ok(Self {
             schema,
-            index,
+            _index: index,
             searcher,
             query_parser,
         })
