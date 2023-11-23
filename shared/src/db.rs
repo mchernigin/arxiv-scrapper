@@ -47,6 +47,15 @@ impl DBConnection {
             .map_err(|e| e.into())
     }
 
+    pub fn get_paper(&mut self, desired_id: i32) -> Option<models::Paper> {
+        use crate::schema::papers::dsl::*;
+
+        papers
+            .filter(id.eq(desired_id))
+            .get_result(&mut self.pg)
+            .ok()
+    }
+
     pub fn paper_exists(&mut self, s: &str) -> Result<bool> {
         use crate::schema::papers::dsl::*;
 

@@ -1,4 +1,4 @@
-use arxiv_shared::db;
+use arxiv_shared::db::DBConnection;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
 use tantivy::query::QueryParser;
@@ -12,27 +12,25 @@ use tantivy::{DocAddress, Index, Score};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-pub struct Engine {
+pub struct SearchEngine {
     schema: tantivy::schema::Schema,
     _index: Index,
     searcher: Searcher,
     query_parser: QueryParser,
 }
 
-impl Engine {
-    pub async fn new() -> anyhow::Result<Self> {
-        let options = TextOptions::default()
-            .set_indexing_options(
-                TextFieldIndexing::default()
-                    .set_tokenizer("searx")
-                    .set_index_option(IndexRecordOption::WithFreqs),
-            )
-            .set_stored();
+impl SearchEngine {
+    pub async fn new(db: &Arc<Mutex<DBConnection>>) -> anyhow::Result<Self> {
+        let options = TextOptions::default().set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer("searxiv-main")
+                .set_index_option(IndexRecordOption::WithFreqs),
+        );
 
         let mut schema_builder = Schema::builder();
         let id = schema_builder.add_u64_field("id", STORED);
         let url = schema_builder.add_text_field("url", STORED);
-        let title = schema_builder.add_text_field("title", options.clone());
+        let title = schema_builder.add_text_field("title", options.clone().set_stored());
         let description = schema_builder.add_text_field("description", options.clone());
         let body = schema_builder.add_text_field("body", options.clone());
         let schema = schema_builder.build();
@@ -44,7 +42,7 @@ impl Engine {
             tantivy::IndexSettings {
                 sort_by_field: None,
                 docstore_compression: Compressor::Zstd(tantivy::store::ZstdCompressor {
-                    compression_level: None,
+                    compression_level: Some(5),
                 }),
                 docstore_compress_dedicated_thread: true,
                 docstore_blocksize: 100_000, // TODO: figure out not random value
@@ -61,13 +59,10 @@ impl Engine {
             tantivy::tokenizer::Language::English,
         ))
         .build();
-        index.tokenizers().register("searx", tokenizer);
+        index.tokenizers().register("searxiv-main", tokenizer);
 
         let mut index_writer = index.writer(100_000_000)?;
 
-        // NOTE: there is no need for Mutex for now, but I probably would want to build index in
-        // parallel later
-        let db = Arc::new(Mutex::new(db::DBConnection::new()?));
         {
             let mut db = db.lock().await;
             let papers = db.get_all_papers()?;
@@ -103,7 +98,9 @@ impl Engine {
         Ok(self.searcher.search(&query, &TopDocs::with_limit(10))?)
     }
 
-    pub fn get_doc(&self, doc_address: DocAddress) -> anyhow::Result<NamedFieldDocument> {
-        Ok(self.schema.to_named_doc(&self.searcher.doc(doc_address)?))
+    pub fn get_doc_id(&self, doc_address: DocAddress) -> Option<u64> {
+        let retrieved_doc = self.searcher.doc(doc_address).ok()?;
+        let id_field = self.schema.get_field("id").ok()?;
+        retrieved_doc.get_first(id_field)?.as_u64()
     }
 }

@@ -147,8 +147,6 @@ dependencies = [
  "log",
  "regex",
  "reqwest",
- "serde",
- "serde_json",
  "tantivy",
  "thiserror",
  "tokio",

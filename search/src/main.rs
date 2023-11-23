@@ -5,11 +5,12 @@ mod logger;
 async fn main() -> anyhow::Result<()> {
     logger::init("searxiv.log")?;
 
-    let current_prefix = inquire::ui::Styled::new("~>").with_fg(inquire::ui::Color::DarkRed);
-    let config = inquire::ui::RenderConfig::default().with_prompt_prefix(current_prefix);
-    inquire::set_global_render_config(config);
+    let db = std::sync::Arc::new(tokio::sync::Mutex::new(
+        arxiv_shared::db::DBConnection::new()?,
+    ));
 
-    let search = engine::Engine::new().await?;
+    println!("Building index...");
+    let search = engine::SearchEngine::new(&db).await?;
 
     loop {
         let query = inquire::Text::new("Query:").prompt()?;
@@ -18,22 +19,17 @@ async fn main() -> anyhow::Result<()> {
             break;
         }
 
+        let start = std::time::Instant::now();
         let results = search.query(&query)?;
+        let duration = start.elapsed();
+
         for (idx, &(_score, doc_address)) in results.iter().enumerate() {
-            println!(
-                "{:2}. {} ({_score})",
-                idx + 1,
-                search
-                    .get_doc(doc_address)?
-                    .0
-                    .get("title")
-                    .unwrap()
-                    .last()
-                    .unwrap()
-                    .as_text()
-                    .unwrap()
-            );
+            let doc_id = search.get_doc_id(doc_address).unwrap();
+            let mut db = db.lock().await;
+            let paper = db.get_paper(doc_id as i32).unwrap();
+            println!("{:2}. {} ({})", idx + 1, paper.title, paper.url);
         }
+        println!("This search took: {:?}", duration);
     }
 
     Ok(())
