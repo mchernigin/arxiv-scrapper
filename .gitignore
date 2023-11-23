@@ -1,5 +1,6 @@
 .*
 !.gitignore
 
-/target
-data
+target
+*.log
+tantivy-index

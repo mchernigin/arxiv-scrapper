@@ -29,7 +29,6 @@ impl DBConnection {
         })
     }
 
-    #[allow(dead_code)]
     pub fn get_all_papers(&mut self) -> Result<Vec<models::Paper>> {
         use crate::schema::papers::dsl::*;
 
