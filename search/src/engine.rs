@@ -82,7 +82,9 @@ impl SearchEngine {
 
         let reader = index.reader()?;
         let searcher = reader.searcher();
-        let query_parser = QueryParser::for_index(&index, vec![title, description, body]);
+        let mut query_parser = QueryParser::for_index(&index, vec![title, description, body]);
+        query_parser.set_field_fuzzy(title, true, 1, true);
+        query_parser.set_field_fuzzy(description, true, 1, true);
 
         Ok(Self {
             schema,
