@@ -6,6 +6,7 @@ services:
       - POSTGRES_PASSWORD=$POSTGRES_PASSWORD
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     env_file:
@@ -16,3 +17,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+
+volumes:
+  data:
+    name: arxiv-data
