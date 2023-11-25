@@ -12,7 +12,7 @@ use tantivy::{DocAddress, Index, Score};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::config::CONFIG;
+use crate::config::{CONFIG, SYMSPELL};
 
 const TOKENIZER_MAIN: &str = "searxiv-main";
 
@@ -54,7 +54,15 @@ impl SearchEngine {
     }
 
     pub fn query(&self, query: &str, limit: usize) -> anyhow::Result<Vec<(Score, DocAddress)>> {
-        let query = self.query_parser.parse_query(query)?;
+        let corrected_query = SYMSPELL
+            .lookup_compound(query, 2)
+            .into_iter()
+            .map(|s| s.term)
+            .collect::<Vec<_>>()
+            .join(" ");
+        let query = self
+            .query_parser
+            .parse_query(&format!("{query} {corrected_query}"))?;
 
         Ok(self.searcher.search(&query, &TopDocs::with_limit(limit))?)
     }

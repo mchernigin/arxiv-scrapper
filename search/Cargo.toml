@@ -30,3 +30,4 @@ serde = { version = "1.0.193", features = ["serde_derive"] }
 etcetera = "0.8.0"
 lazy_static = "1.4.0"
 toml = "0.8.8"
+symspell = { git = "https://github.com/mchernigin/symspell.git" }

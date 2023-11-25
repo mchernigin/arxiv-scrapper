@@ -2,7 +2,7 @@ use console::style;
 use dialoguer::{theme::ColorfulTheme, BasicHistory, Input};
 use indicatif::{ProgressBar, ProgressStyle};
 
-use crate::config::CONFIG;
+use crate::config::{CONFIG, SYMSPELL};
 
 pub async fn run_cli() -> anyhow::Result<()> {
     let db = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -19,6 +19,8 @@ pub async fn run_cli() -> anyhow::Result<()> {
     pb.set_message("Building index...");
     let search = crate::engine::SearchEngine::new(&db).await?;
     pb.finish_with_message("Index has been built\n");
+
+    lazy_static::initialize(&SYMSPELL);
 
     let mut history = BasicHistory::new().max_entries(50).no_duplicates(true);
     loop {
