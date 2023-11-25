@@ -7,6 +7,8 @@ mod scraper;
 async fn main() -> anyhow::Result<()> {
     let cfg = config::Config::parse();
 
+    dotenvy::dotenv()?;
+
     let mut scraper = scraper::Scraper::new(cfg.clone())?;
 
     let start_url: String = format!(

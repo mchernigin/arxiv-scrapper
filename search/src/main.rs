@@ -1,11 +1,12 @@
 mod cli;
+mod config;
 mod engine;
 mod server;
 
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about)]
 pub struct Cli {
     #[clap(subcommand)]
     pub mode: RunMode,

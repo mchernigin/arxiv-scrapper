@@ -2,9 +2,11 @@ use console::style;
 use dialoguer::{theme::ColorfulTheme, BasicHistory, Input};
 use indicatif::{ProgressBar, ProgressStyle};
 
+use crate::config::CONFIG;
+
 pub async fn run_cli() -> anyhow::Result<()> {
     let db = std::sync::Arc::new(tokio::sync::Mutex::new(
-        arxiv_shared::db::DBConnection::new()?,
+        arxiv_shared::db::DBConnection::new(&CONFIG.database_url)?,
     ));
 
     let pb = ProgressBar::new_spinner();
@@ -26,7 +28,7 @@ pub async fn run_cli() -> anyhow::Result<()> {
             .interact_text()?;
 
         let start = std::time::Instant::now();
-        let results = search.query(&query)?;
+        let results = search.query(&query, CONFIG.cli_specific.max_results)?;
         let duration = start.elapsed();
 
         for (idx, &(_score, doc_address)) in results.iter().enumerate() {

@@ -4,6 +4,8 @@ use utoipa_rapidoc::RapiDoc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::config::CONFIG;
+
 #[derive(utoipa::OpenApi)]
 #[openapi(
         paths(searxiv::root, searxiv::search),
@@ -23,7 +25,7 @@ pub async fn run_server() -> anyhow::Result<()> {
         .init();
 
     let db = std::sync::Arc::new(tokio::sync::Mutex::new(
-        arxiv_shared::db::DBConnection::new()?,
+        arxiv_shared::db::DBConnection::new(&CONFIG.database_url)?,
     ));
     let engine = Mutex::new(crate::engine::SearchEngine::new(&db).await?);
 
@@ -34,7 +36,7 @@ pub async fn run_server() -> anyhow::Result<()> {
         .merge(RapiDoc::with_openapi("/api-docs/openapi.json", ApiDoc::openapi()).path("/docs"))
         .with_state(store);
 
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], CONFIG.server_specific.port));
     tracing::info!("Listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
@@ -53,6 +55,8 @@ mod searxiv {
     use tokio::sync::Mutex;
 
     use arxiv_shared::db::DBConnection;
+
+    use crate::config::CONFIG;
 
     pub(super) struct Store {
         pub(crate) engine: Mutex<crate::engine::SearchEngine>,
@@ -100,7 +104,12 @@ mod searxiv {
         State(state): State<Arc<Store>>,
         query: Query<SearchQuery>,
     ) -> Json<Vec<PaperInfo>> {
-        let results = state.engine.lock().await.query(&query.query).unwrap();
+        let results = state
+            .engine
+            .lock()
+            .await
+            .query(&query.query, CONFIG.server_specific.max_results)
+            .unwrap();
 
         let mut papers = Vec::new();
 

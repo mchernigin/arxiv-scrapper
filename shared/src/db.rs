@@ -19,13 +19,9 @@ pub struct DBConnection {
 }
 
 impl DBConnection {
-    pub fn new() -> Result<DBConnection> {
-        dotenvy::dotenv().ok();
-
-        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-
+    pub fn new(db_url: &str) -> Result<DBConnection> {
         Ok(DBConnection {
-            pg: PgConnection::establish(&database_url)?,
+            pg: PgConnection::establish(db_url)?,
         })
     }
 

@@ -12,6 +12,8 @@ use tantivy::{DocAddress, Index, Score};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::config::CONFIG;
+
 const TOKENIZER_MAIN: &str = "searxiv-main";
 
 pub struct SearchEngine {
@@ -29,30 +31,14 @@ impl SearchEngine {
         );
 
         let mut schema_builder = Schema::builder();
-        let id = schema_builder.add_u64_field("id", STORED);
-        let url = schema_builder.add_text_field("url", STORED);
+        let _id = schema_builder.add_u64_field("id", STORED);
+        let _url = schema_builder.add_text_field("url", STORED);
         let title = schema_builder.add_text_field("title", options.clone().set_stored());
         let description = schema_builder.add_text_field("description", options.clone());
         let body = schema_builder.add_text_field("body", options.clone());
         let schema = schema_builder.build();
 
-        let index = create_index(&schema)?;
-        let mut index_writer = index.writer(100_000_000)?;
-        {
-            let mut db = db.lock().await;
-            let papers = db.get_all_papers()?;
-
-            for paper in papers {
-                index_writer.add_document(doc!(
-                    id => paper.id as u64,
-                    url => paper.url,
-                    title => paper.title,
-                    description => paper.description,
-                    body => paper.body,
-                ))?;
-            }
-        }
-        index_writer.commit()?;
+        let index = create_index(&schema, db).await?;
 
         let reader = index.reader()?;
         let searcher = reader.searcher();
@@ -67,10 +53,10 @@ impl SearchEngine {
         })
     }
 
-    pub fn query(&self, query: &str) -> anyhow::Result<Vec<(Score, DocAddress)>> {
+    pub fn query(&self, query: &str, limit: usize) -> anyhow::Result<Vec<(Score, DocAddress)>> {
         let query = self.query_parser.parse_query(query)?;
 
-        Ok(self.searcher.search(&query, &TopDocs::with_limit(10))?)
+        Ok(self.searcher.search(&query, &TopDocs::with_limit(limit))?)
     }
 
     pub fn get_doc_id(&self, doc_address: DocAddress) -> Option<u64> {
@@ -80,24 +66,49 @@ impl SearchEngine {
     }
 }
 
-fn create_index(schema: &Schema) -> tantivy::Result<Index> {
-    let directory = MmapDirectory::open(std::env::current_dir()?.join("tantivy-index"))?;
-    let index = Index::create(
-        directory,
-        schema.clone(),
-        tantivy::IndexSettings {
-            sort_by_field: None,
-            docstore_compression: Compressor::Zstd(tantivy::store::ZstdCompressor {
-                compression_level: Some(5),
-            }),
-            docstore_compress_dedicated_thread: true,
-            docstore_blocksize: 100_000, // TODO: figure out not random value
-        },
-    )?;
+async fn create_index(schema: &Schema, db: &Arc<Mutex<DBConnection>>) -> anyhow::Result<Index> {
+    let index_dir = crate::config::get_cache_dir().join("index");
+    let index_already_exists = index_dir.exists();
+    let index = if index_already_exists {
+        tracing::info!("Index dir {index_dir:?} alreay exist: opening existing index");
+        Index::open_in_dir(index_dir)?
+    } else {
+        tracing::info!("Index dir {index_dir:?} does not exist: creating an index");
+        std::fs::create_dir_all(index_dir.clone())?;
+        Index::create(
+            MmapDirectory::open(index_dir.clone())?,
+            schema.clone(),
+            tantivy::IndexSettings {
+                sort_by_field: None,
+                docstore_compression: Compressor::Zstd(tantivy::store::ZstdCompressor {
+                    compression_level: CONFIG.index_zstd_compression_level,
+                }),
+                docstore_compress_dedicated_thread: true,
+                docstore_blocksize: CONFIG.index_docstore_blocksize,
+            },
+        )?
+    };
 
     index
         .tokenizers()
         .register(TOKENIZER_MAIN, create_tokenizer());
+
+    if !index_already_exists {
+        let mut index_writer = index.writer(CONFIG.index_writer_memory_budget)?;
+        let mut db = db.lock().await;
+        let papers = db.get_all_papers()?;
+
+        for paper in papers {
+            index_writer.add_document(doc!(
+                schema.get_field("id")? => paper.id as u64,
+                schema.get_field("url")? => paper.url,
+                schema.get_field("title")? => paper.title,
+                schema.get_field("description")? => paper.description,
+                schema.get_field("body")? => paper.body,
+            ))?;
+        }
+        index_writer.commit()?;
+    }
 
     Ok(index)
 }

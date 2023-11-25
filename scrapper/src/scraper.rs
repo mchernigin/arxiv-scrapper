@@ -37,7 +37,9 @@ impl Scraper {
             .user_agent("Googlebot")
             .build()
             .unwrap();
-        let db = Arc::new(Mutex::new(db::DBConnection::new()?));
+        let db = Arc::new(Mutex::new(db::DBConnection::new(
+            &std::env::var("DATABASE_URL").unwrap(),
+        )?));
         let last_request = Arc::new(Mutex::new(std::time::Instant::now()));
         let burst_count = Arc::new(Mutex::new(0));
 
