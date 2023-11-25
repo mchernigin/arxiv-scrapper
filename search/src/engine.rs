@@ -12,9 +12,10 @@ use tantivy::{DocAddress, Index, Score};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+const TOKENIZER_MAIN: &str = "searxiv-main";
+
 pub struct SearchEngine {
     schema: tantivy::schema::Schema,
-    _index: Index,
     searcher: Searcher,
     query_parser: QueryParser,
 }
@@ -23,8 +24,8 @@ impl SearchEngine {
     pub async fn new(db: &Arc<Mutex<DBConnection>>) -> anyhow::Result<Self> {
         let options = TextOptions::default().set_indexing_options(
             TextFieldIndexing::default()
-                .set_tokenizer("searxiv-main")
-                .set_index_option(IndexRecordOption::WithFreqs),
+                .set_tokenizer(TOKENIZER_MAIN)
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
         );
 
         let mut schema_builder = Schema::builder();
@@ -35,34 +36,8 @@ impl SearchEngine {
         let body = schema_builder.add_text_field("body", options.clone());
         let schema = schema_builder.build();
 
-        let directory = MmapDirectory::open(std::env::current_dir()?.join("tantivy-index"))?;
-        let index = Index::create(
-            directory,
-            schema.clone(),
-            tantivy::IndexSettings {
-                sort_by_field: None,
-                docstore_compression: Compressor::Zstd(tantivy::store::ZstdCompressor {
-                    compression_level: Some(5),
-                }),
-                docstore_compress_dedicated_thread: true,
-                docstore_blocksize: 100_000, // TODO: figure out not random value
-            },
-        )?;
-
-        let stop_words = StopWordFilter::new(tantivy::tokenizer::Language::English).unwrap();
-        let tokenizer = tantivy::tokenizer::TextAnalyzer::builder(
-            tantivy::tokenizer::SimpleTokenizer::default(),
-        )
-        .filter(tantivy::tokenizer::LowerCaser)
-        .filter(stop_words)
-        .filter(tantivy::tokenizer::Stemmer::new(
-            tantivy::tokenizer::Language::English,
-        ))
-        .build();
-        index.tokenizers().register("searxiv-main", tokenizer);
-
+        let index = create_index(&schema)?;
         let mut index_writer = index.writer(100_000_000)?;
-
         {
             let mut db = db.lock().await;
             let papers = db.get_all_papers()?;
@@ -77,7 +52,6 @@ impl SearchEngine {
                 ))?;
             }
         }
-
         index_writer.commit()?;
 
         let reader = index.reader()?;
@@ -88,7 +62,6 @@ impl SearchEngine {
 
         Ok(Self {
             schema,
-            _index: index,
             searcher,
             query_parser,
         })
@@ -105,4 +78,37 @@ impl SearchEngine {
         let id_field = self.schema.get_field("id").ok()?;
         retrieved_doc.get_first(id_field)?.as_u64()
     }
+}
+
+fn create_index(schema: &Schema) -> tantivy::Result<Index> {
+    let directory = MmapDirectory::open(std::env::current_dir()?.join("tantivy-index"))?;
+    let index = Index::create(
+        directory,
+        schema.clone(),
+        tantivy::IndexSettings {
+            sort_by_field: None,
+            docstore_compression: Compressor::Zstd(tantivy::store::ZstdCompressor {
+                compression_level: Some(5),
+            }),
+            docstore_compress_dedicated_thread: true,
+            docstore_blocksize: 100_000, // TODO: figure out not random value
+        },
+    )?;
+
+    index
+        .tokenizers()
+        .register(TOKENIZER_MAIN, create_tokenizer());
+
+    Ok(index)
+}
+
+fn create_tokenizer() -> tantivy::tokenizer::TextAnalyzer {
+    let stop_words = StopWordFilter::new(tantivy::tokenizer::Language::English).unwrap();
+    tantivy::tokenizer::TextAnalyzer::builder(tantivy::tokenizer::SimpleTokenizer::default())
+        .filter(tantivy::tokenizer::LowerCaser)
+        .filter(stop_words)
+        .filter(tantivy::tokenizer::Stemmer::new(
+            tantivy::tokenizer::Language::English,
+        ))
+        .build()
 }
