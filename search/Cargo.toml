@@ -21,3 +21,9 @@ tantivy = { version = "0.21.1", features = ["zstd-compression"] }
 dialoguer = { version = "0.11.0", features = ["history"] }
 console = "0.15.7"
 indicatif = "0.17.7"
+axum = { version = "0.6.20", features = ["tracing"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+utoipa = "4.1.0"
+utoipa-rapidoc = { version = "1.0.0", features = ["axum"] }
+serde = { version = "1.0.193", features = ["serde_derive"] }

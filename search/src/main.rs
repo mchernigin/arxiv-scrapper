@@ -1,6 +1,5 @@
 mod cli;
 mod engine;
-mod logger;
 mod server;
 
 use clap::{Parser, Subcommand};
@@ -22,8 +21,6 @@ pub enum RunMode {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    logger::init("searxiv.log")?;
-
     let cli = Cli::parse();
 
     match cli.mode {
