@@ -29,13 +29,13 @@ lazy_static! {
     pub static ref SYMSPELL: symspell::SymSpell<symspell::AsciiStringStrategy> = {
         let mut spell = symspell::SymSpell::default();
         spell.load_dictionary(
-            "./search/data/frequency_dictionary_en_82_765.txt",
+            "./search/dictionaries/frequency_dictionary_en_82_765.txt",
             0,
             1,
             " ",
         );
         spell.load_bigram_dictionary(
-            "./search/data/frequency_bigramdictionary_en_243_342.txt",
+            "./search/dictionaries/frequency_bigramdictionary_en_243_342.txt",
             0,
             2,
             " ",

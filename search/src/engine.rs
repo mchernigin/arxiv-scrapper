@@ -53,17 +53,11 @@ impl SearchEngine {
         })
     }
 
-    pub fn query(&self, query: &str, limit: usize) -> anyhow::Result<Vec<(Score, DocAddress)>> {
-        let corrected_query = SYMSPELL
-            .lookup_compound(query, 2)
-            .into_iter()
-            .map(|s| s.term)
-            .collect::<Vec<_>>()
-            .join(" ");
-        let query = self
-            .query_parser
-            .parse_query(&format!("{query} {corrected_query}"))?;
-
+    pub fn query(&self, query: String, limit: usize) -> anyhow::Result<Vec<(Score, DocAddress)>> {
+        // NOTE: you can uncomment this... do it... but don't blame me later
+        // let query = spellcheck_query(query);
+        // let query = add_synonyms(query, 0);
+        let query = self.query_parser.parse_query(&query)?;
         Ok(self.searcher.search(&query, &TopDocs::with_limit(limit))?)
     }
 
@@ -130,4 +124,40 @@ fn create_tokenizer() -> tantivy::tokenizer::TextAnalyzer {
             tantivy::tokenizer::Language::English,
         ))
         .build()
+}
+
+#[allow(dead_code)]
+fn spellcheck_query(query: String) -> String {
+    let words = query.split(' ').collect::<Vec<_>>();
+
+    let mut words_witch_correction = Vec::new();
+
+    for word in words.into_iter() {
+        words_witch_correction.push(word.to_string());
+        if let Some(suggestion) = SYMSPELL.lookup(word, symspell::Verbosity::Top, 2).first() {
+            if suggestion.distance > 0 {
+                words_witch_correction.push(suggestion.term.to_string());
+            }
+        }
+    }
+
+    words_witch_correction.join(" ")
+}
+
+#[allow(dead_code)]
+fn add_synonyms(query: String, n: usize) -> String {
+    let query_words = query
+        .split(' ')
+        .map(|s| s.to_string())
+        .collect::<Vec<String>>();
+    let mut query_words_with_synonyms = query_words.clone();
+    for word in query_words {
+        let mut synonyms = thesaurus::synonyms(&word)
+            .into_iter()
+            .take(n)
+            .collect::<Vec<_>>();
+        query_words_with_synonyms.append(&mut synonyms);
+    }
+
+    query_words_with_synonyms.join(" ")
 }

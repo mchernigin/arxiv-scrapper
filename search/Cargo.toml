@@ -31,3 +31,4 @@ etcetera = "0.8.0"
 lazy_static = "1.4.0"
 toml = "0.8.8"
 symspell = { git = "https://github.com/mchernigin/symspell.git" }
+thesaurus = { version = "0.5.2", features = ["moby"] }
