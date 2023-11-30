@@ -55,8 +55,9 @@ impl SearchEngine {
 
     pub fn query(&self, query: String, limit: usize) -> anyhow::Result<Vec<(Score, DocAddress)>> {
         // NOTE: you can uncomment this... do it... but don't blame me later
-        // let query = spellcheck_query(query);
+        let query = spellcheck_query(query);
         // let query = add_synonyms(query, 0);
+        println!("{query}");
         let query = self.query_parser.parse_query(&query)?;
         Ok(self.searcher.search(&query, &TopDocs::with_limit(limit))?)
     }

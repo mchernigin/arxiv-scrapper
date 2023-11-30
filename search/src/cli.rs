@@ -18,9 +18,18 @@ pub async fn run_cli() -> anyhow::Result<()> {
     );
     pb.set_message("Building index...");
     let search = crate::engine::SearchEngine::new(&db).await?;
-    pb.finish_with_message("Index has been built\n");
+    pb.finish_with_message("Index has been built");
 
+    let pb = ProgressBar::new_spinner();
+    pb.enable_steady_tick(std::time::Duration::from_millis(100));
+    pb.set_style(
+        ProgressStyle::with_template("{spinner:.green} {msg}")
+            .unwrap()
+            .tick_chars("◜◠◝◞◡◟✔"),
+    );
+    pb.set_message("Initializing dictionary...");
     lazy_static::initialize(&SYMSPELL);
+    pb.finish_with_message("Dictianary has been loaded\n");
 
     let mut history = BasicHistory::new().max_entries(50).no_duplicates(true);
     loop {
