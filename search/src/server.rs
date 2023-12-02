@@ -1,3 +1,4 @@
+use tower_http::cors::CorsLayer;
 use utoipa::OpenApi;
 use utoipa_rapidoc::RapiDoc;
 
@@ -34,14 +35,14 @@ pub async fn run_server() -> anyhow::Result<()> {
         .route("/", axum::routing::get(searxiv::root))
         .route("/search", axum::routing::get(searxiv::search))
         .merge(RapiDoc::with_openapi("/api-docs/openapi.json", ApiDoc::openapi()).path("/docs"))
+        .layer(CorsLayer::permissive())
         .with_state(store);
 
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], CONFIG.server_specific.port));
-    tracing::info!("Listening on {}", addr);
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let listener =
+        tokio::net::TcpListener::bind(format!("0.0.0.0:{}", CONFIG.server_specific.port))
+            .await
+            .unwrap();
+    axum::serve(listener, app).await.unwrap();
 
     Ok(())
 }

@@ -1,4 +1,4 @@
 [workspace]
 
-members = ["scrapper", "search", "shared"]
+members = ["scraper", "search", "shared"]
 resolver = "2"

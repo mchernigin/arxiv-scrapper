@@ -21,14 +21,16 @@ tantivy = { version = "0.21.1", features = ["zstd-compression"] }
 dialoguer = { version = "0.11.0", features = ["history"] }
 console = "0.15.7"
 indicatif = "0.17.7"
-axum = { version = "0.6.20", features = ["tracing"] }
+axum = { version = "0.7.1", features = ["tracing"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 utoipa = "4.1.0"
-utoipa-rapidoc = { version = "1.0.0", features = ["axum"] }
+utoipa-rapidoc = { version = "2.0.0", features = ["axum"] }
 serde = { version = "1.0.193", features = ["serde_derive"] }
 etcetera = "0.8.0"
 lazy_static = "1.4.0"
 toml = "0.8.8"
 symspell = { git = "https://github.com/mchernigin/symspell.git" }
 thesaurus = { version = "0.5.2", features = ["moby"] }
+tower-http = { version = "0.5.0", features = ["cors", "trace"] }
+tower = "0.4.13"
