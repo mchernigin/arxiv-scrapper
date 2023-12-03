@@ -28,6 +28,7 @@ lazy_static! {
     };
     pub static ref SYMSPELL: symspell::SymSpell<symspell::AsciiStringStrategy> = {
         let mut spell = symspell::SymSpell::default();
+        // TODO: store dictionaries in XDG_DATA_HOME and download them if there is none
         spell.load_dictionary("./search/dictionaries/LScD.txt", 0, 1, " ");
         spell.load_bigram_dictionary(
             "./search/dictionaries/frequency_bigramdictionary_en_243_342.txt",

@@ -69,6 +69,7 @@ impl SearchEngine {
         log::info!("Executing query {query:?}");
 
         let query = self.query_parser.parse_query(&query)?;
+
         Ok(self.searcher.search(&query, &TopDocs::with_limit(limit))?)
     }
 
@@ -147,6 +148,7 @@ fn create_tokenizer() -> tantivy::tokenizer::TextAnalyzer {
 #[allow(dead_code)]
 fn spellcheck_query(query: String) -> String {
     let mut words_witch_correction = Vec::new();
+    const CORRECTED_WORD_WEIGHT: f32 = 0.5;
 
     query.split(' ').for_each(|word| {
         words_witch_correction.push(word.to_string());
@@ -156,7 +158,7 @@ fn spellcheck_query(query: String) -> String {
         {
             if suggestion.distance > 0 {
                 log::info!("Correcting {word:?} to {:?}", suggestion.term);
-                words_witch_correction.push(suggestion.term.to_string());
+                words_witch_correction.push(format!("{}^{}", suggestion.term, CORRECTED_WORD_WEIGHT));
             }
         }
     });
