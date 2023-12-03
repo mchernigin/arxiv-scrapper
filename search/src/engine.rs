@@ -6,8 +6,7 @@ use tantivy::schema::IndexRecordOption;
 use tantivy::schema::*;
 use tantivy::store::Compressor;
 use tantivy::tokenizer::StopWordFilter;
-use tantivy::{doc, Searcher};
-use tantivy::{DocAddress, Index, Score};
+use tantivy::{doc, Searcher, DocAddress, Index, Score};
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -34,6 +33,7 @@ impl SearchEngine {
         let _id = schema_builder.add_u64_field("id", STORED);
         let _url = schema_builder.add_text_field("url", STORED);
         let title = schema_builder.add_text_field("title", options.clone().set_stored());
+        let authors = schema_builder.add_text_field("authors", options.clone().set_stored());
         let description = schema_builder.add_text_field("description", options.clone());
         let body = schema_builder.add_text_field("body", options.clone());
         let schema = schema_builder.build();
@@ -42,9 +42,14 @@ impl SearchEngine {
 
         let reader = index.reader()?;
         let searcher = reader.searcher();
-        let mut query_parser = QueryParser::for_index(&index, vec![title, description, body]);
+        let mut query_parser =
+            QueryParser::for_index(&index, vec![title, authors, description, body]);
         query_parser.set_field_fuzzy(title, true, 1, true);
         query_parser.set_field_fuzzy(description, true, 1, true);
+
+        query_parser.set_field_boost(title, 3.0);
+        query_parser.set_field_boost(authors, 2.0);
+        query_parser.set_field_boost(description, 2.0);
 
         Ok(Self {
             schema,
@@ -57,7 +62,6 @@ impl SearchEngine {
         // NOTE: you can uncomment this... do it... but don't blame me later
         let query = spellcheck_query(query);
         // let query = add_synonyms(query, 0);
-        println!("{query}");
         let query = self.query_parser.parse_query(&query)?;
         Ok(self.searcher.search(&query, &TopDocs::with_limit(limit))?)
     }
@@ -102,10 +106,17 @@ async fn create_index(schema: &Schema, db: &Arc<Mutex<DBConnection>>) -> anyhow:
         let papers = db.get_all_papers()?;
 
         for paper in papers {
+            let authors = db
+                .get_paper_authors(paper.id)?
+                .into_iter()
+                .map(|a| a.name)
+                .collect::<Vec<_>>()
+                .join(" ");
             index_writer.add_document(doc!(
                 schema.get_field("id")? => paper.id as u64,
                 schema.get_field("url")? => paper.url,
                 schema.get_field("title")? => paper.title,
+                schema.get_field("authors")? => authors,
                 schema.get_field("description")? => paper.description,
                 schema.get_field("body")? => paper.body,
             ))?;

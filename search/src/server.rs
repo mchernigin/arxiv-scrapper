@@ -80,6 +80,8 @@ mod searxiv {
     pub(super) struct PaperInfo {
         /// Title of the paper
         title: String,
+        /// Paper authors
+        authors: String,
         /// Description or absract of the paper
         description: String,
         /// Url to the paper on arxiv.org
@@ -118,8 +120,16 @@ mod searxiv {
             let doc_id = state.engine.lock().await.get_doc_id(doc_address).unwrap();
             let mut db = state.db.lock().await;
             let paper = db.get_paper(doc_id as i32).unwrap();
+            let authors = db
+                .get_paper_authors(paper.id)
+                .unwrap()
+                .iter()
+                .map(|a| a.name.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
             papers.push(PaperInfo {
                 title: paper.title,
+                authors,
                 description: paper.description,
                 url: paper.url,
             })

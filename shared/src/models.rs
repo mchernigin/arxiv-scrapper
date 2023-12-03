@@ -2,7 +2,7 @@ use diesel::prelude::*;
 
 pub type Id = i32;
 
-#[derive(Identifiable, Queryable, Selectable, Debug)]
+#[derive(Identifiable, Queryable, Selectable, PartialEq, Debug)]
 #[diesel(table_name = crate::schema::papers)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Paper {
@@ -13,7 +13,7 @@ pub struct Paper {
     pub body: String,
 }
 
-#[derive(Identifiable, Queryable, Selectable, Debug)]
+#[derive(Identifiable, Queryable, Selectable, PartialEq, Debug)]
 #[diesel(table_name = crate::schema::authors)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Author {

@@ -83,7 +83,7 @@ impl Default for Config {
             },
             server_specific: ServerConfig {
                 max_results: 10,
-                port: 3000,
+                port: 1818,
             },
         }
     }

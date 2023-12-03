@@ -52,6 +52,26 @@ impl DBConnection {
             .ok()
     }
 
+    pub fn get_paper_authors(&mut self, desired_paper_id: i32) -> Result<Vec<models::Author>> {
+        use crate::schema::authors::dsl::*;
+        use crate::schema::paper_author::dsl::*;
+
+        let paper_authors: Vec<models::PaperAuthor> = paper_author
+            .filter(paper_id.eq(desired_paper_id))
+            .get_results(&mut self.pg)?;
+
+        let authors_ids = paper_authors
+            .into_iter()
+            .map(|pa| pa.author_id)
+            .collect::<Vec<_>>();
+
+        let r = authors
+            .filter(id.eq_any(authors_ids))
+            .get_results(&mut self.pg)?;
+
+        Ok(r)
+    }
+
     pub fn paper_exists(&mut self, s: &str) -> Result<bool> {
         use crate::schema::papers::dsl::*;
 

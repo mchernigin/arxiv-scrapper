@@ -250,6 +250,7 @@ fn select_title(dom: &scraper::Html) -> String {
                 .trim()
                 .trim_start_matches("Title:")
                 .trim_start()
+                .replace("  ", " ")
                 .to_string()
         })
         .unwrap_or_default()
