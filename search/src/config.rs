@@ -1,6 +1,10 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use tokio::sync::Mutex;
 
 use etcetera::{app_strategy, AppStrategy, AppStrategyArgs};
+use rust_bert::pipelines::sentence_embeddings::{
+    SentenceEmbeddingsBuilder, SentenceEmbeddingsModel, SentenceEmbeddingsModelType,
+};
 
 use lazy_static::lazy_static;
 
@@ -52,6 +56,9 @@ lazy_static! {
 
         synonyms
     };
+    pub static ref MODEL: Arc<Mutex<SentenceEmbeddingsModel>> =
+        Arc::new(Mutex::new(SentenceEmbeddingsBuilder::remote(SentenceEmbeddingsModelType::AllMiniLmL12V2)
+        .create_model().unwrap()));
 }
 
 pub fn get_cache_dir() -> PathBuf {
@@ -68,6 +75,7 @@ pub struct Config {
     pub index_zstd_compression_level: Option<i32>,
     pub index_docstore_blocksize: usize,
     pub index_writer_memory_budget: usize,
+    pub max_results: usize,
     pub cli_specific: CliConfig,
     pub server_specific: ServerConfig,
 }
@@ -75,12 +83,10 @@ pub struct Config {
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct CliConfig {
     pub prune: bool,
-    pub max_results: usize,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct ServerConfig {
-    pub max_results: usize,
     pub port: u16,
 }
 
@@ -91,14 +97,9 @@ impl Default for Config {
             index_zstd_compression_level: None,
             index_writer_memory_budget: 100_000_000,
             index_docstore_blocksize: 100_000, // TODO: figure out not random value
-            cli_specific: CliConfig {
-                prune: false,
-                max_results: 10,
-            },
-            server_specific: ServerConfig {
-                max_results: 10,
-                port: 1818,
-            },
+            max_results: 10,
+            cli_specific: CliConfig { prune: false },
+            server_specific: ServerConfig { port: 1818 },
         }
     }
 }

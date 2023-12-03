@@ -1,4 +1,5 @@
 use arxiv_shared::db::DBConnection;
+use nalgebra::{DVector, RealField};
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
 use tantivy::query::QueryParser;
@@ -11,7 +12,7 @@ use tantivy::{doc, DocAddress, Index, Score, Searcher};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::config::{CONFIG, SYMSPELL, SYNONYMS};
+use crate::config::{CONFIG, MODEL, SYMSPELL, SYNONYMS};
 
 const TOKENIZER_MAIN: &str = "searxiv-main";
 
@@ -33,6 +34,7 @@ impl SearchEngine {
         let mut schema_builder = Schema::builder();
         let _id = schema_builder.add_u64_field("id", STORED);
         let _url = schema_builder.add_text_field("url", STORED);
+        let _embediding = schema_builder.add_bytes_field("embedding", STORED);
         let title = schema_builder.add_text_field("title", options.clone().set_stored());
         let authors = schema_builder.add_text_field("authors", options.clone().set_stored());
         let description = schema_builder.add_text_field("description", options.clone());
@@ -62,7 +64,11 @@ impl SearchEngine {
         })
     }
 
-    pub fn query(&self, query: String, limit: usize) -> anyhow::Result<Vec<(Score, DocAddress)>> {
+    pub async fn query(
+        &self,
+        query: String,
+        _limit: usize,
+    ) -> anyhow::Result<Vec<(Score, DocAddress)>> {
         // NOTE: we get query in double quotes if it contains more than 1 word
         let query = query.trim_matches('"').to_string();
 
@@ -70,9 +76,47 @@ impl SearchEngine {
         let query = add_synonyms(query, 2);
         log::info!("Executing query {query:?}");
 
-        let query = self.query_parser.parse_query(&query)?;
+        let search_query = self.query_parser.parse_query(&query)?;
+        let search_results = self
+            .searcher
+            .search(&search_query, &TopDocs::with_limit(100))?;
 
-        Ok(self.searcher.search(&query, &TopDocs::with_limit(limit))?)
+        Ok(self.bert_filter(query, search_results).await?)
+    }
+
+    pub async fn bert_filter(
+        &self,
+        query: String,
+        top: Vec<(f32, DocAddress)>,
+    ) -> anyhow::Result<Vec<(f32, DocAddress)>> {
+        let model = &MODEL.lock().await;
+
+        let query_embedding = model.encode(&[&query])?.first().unwrap().to_owned();
+        let query_embedding = &DVector::from_vec(query_embedding);
+
+        let mut new_top = top
+            .into_iter()
+            .map(|(score, doc_id)| -> anyhow::Result<(f32, DocAddress)> {
+                let doc = self.searcher.doc(doc_id)?;
+                let embdeding_bytes = doc
+                    .get_first(self.schema.get_field("embedding")?)
+                    .unwrap()
+                    .as_bytes()
+                    .unwrap();
+                let paper_embedding = bincode::deserialize(embdeding_bytes)?;
+
+                let similarity =
+                    cosine_similarity(query_embedding, &DVector::from_vec(paper_embedding));
+
+                Ok((score * similarity, doc_id))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        new_top.sort_by(|(score1, _), (score2, _)| score2.partial_cmp(score1).unwrap());
+
+        let first_n = new_top.into_iter().take(CONFIG.max_results).collect();
+
+        Ok(first_n)
     }
 
     pub fn get_doc_id(&self, doc_address: DocAddress) -> Option<u64> {
@@ -118,6 +162,7 @@ async fn create_index(schema: &Schema, db: &Arc<Mutex<DBConnection>>) -> anyhow:
 
     if !index_already_exists {
         let mut index_writer = index.writer(CONFIG.index_writer_memory_budget)?;
+        let model = &MODEL.lock().await;
         let mut db = db.lock().await;
         let papers = db.get_all_papers()?;
 
@@ -128,9 +173,16 @@ async fn create_index(schema: &Schema, db: &Arc<Mutex<DBConnection>>) -> anyhow:
                 .map(|a| a.name)
                 .collect::<Vec<_>>()
                 .join(" ");
+
+            let sentences = [&format!("{}. {}", paper.title, paper.description)];
+            let output = model.encode(&sentences)?;
+            let embedding = output.first().unwrap().to_owned();
+            let embedding_bytes = bincode::serialize(&embedding).unwrap();
+
             index_writer.add_document(doc!(
                 schema.get_field("id")? => paper.id as u64,
                 schema.get_field("url")? => paper.url,
+                schema.get_field("embedding")? => embedding_bytes,
                 schema.get_field("title")? => paper.title,
                 schema.get_field("authors")? => authors,
                 schema.get_field("description")? => paper.description,
@@ -141,6 +193,13 @@ async fn create_index(schema: &Schema, db: &Arc<Mutex<DBConnection>>) -> anyhow:
     }
 
     Ok(index)
+}
+
+fn cosine_similarity<T: RealField>(a: &DVector<T>, b: &DVector<T>) -> T {
+    let norm_a = a.norm();
+    let norm_b = b.norm();
+    let dot_product = a.dot(b);
+    dot_product / (norm_a * norm_b)
 }
 
 fn create_tokenizer() -> tantivy::tokenizer::TextAnalyzer {

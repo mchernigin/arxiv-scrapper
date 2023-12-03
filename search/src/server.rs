@@ -146,7 +146,8 @@ mod searxiv {
             .engine
             .lock()
             .await
-            .query(query.query.clone(), CONFIG.server_specific.max_results)
+            .query(query.query.clone(), CONFIG.max_results)
+            .await
             .unwrap();
 
         let mut papers = Vec::new();

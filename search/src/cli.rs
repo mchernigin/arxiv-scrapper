@@ -48,7 +48,7 @@ pub async fn run_cli(flags: Flags) -> anyhow::Result<()> {
             .interact_text()?;
 
         let start = std::time::Instant::now();
-        let results = search.query(query, CONFIG.cli_specific.max_results)?;
+        let results = search.query(query, CONFIG.max_results).await?;
         let duration = start.elapsed();
 
         for (idx, &(_score, doc_address)) in results.iter().enumerate() {
