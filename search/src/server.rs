@@ -5,7 +5,10 @@ use utoipa_rapidoc::RapiDoc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::config::{CONFIG, SYMSPELL, SYNONYMS};
+use crate::{
+    config::{get_cache_dir, CONFIG, SYMSPELL, SYNONYMS},
+    Flags,
+};
 
 #[derive(utoipa::OpenApi)]
 #[openapi(
@@ -19,11 +22,16 @@ use crate::config::{CONFIG, SYMSPELL, SYNONYMS};
     )]
 struct ApiDoc;
 
-pub async fn run_server() -> anyhow::Result<()> {
+pub async fn run_server(flags: Flags) -> anyhow::Result<()> {
     tracing_subscriber::fmt::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_max_level(tracing::Level::INFO)
         .init();
+
+    if flags.prune {
+        _ = std::fs::remove_dir_all(get_cache_dir());
+        log::info!("Pruned index");
+    }
 
     let db = std::sync::Arc::new(tokio::sync::Mutex::new(
         arxiv_shared::db::DBConnection::new(&CONFIG.database_url)?,

@@ -2,9 +2,17 @@ use console::style;
 use dialoguer::{theme::ColorfulTheme, BasicHistory, Input};
 use indicatif::{ProgressBar, ProgressStyle};
 
-use crate::config::{CONFIG, SYMSPELL, SYNONYMS};
+use crate::{
+    config::{get_cache_dir, CONFIG, SYMSPELL, SYNONYMS},
+    Flags,
+};
 
-pub async fn run_cli() -> anyhow::Result<()> {
+pub async fn run_cli(flags: Flags) -> anyhow::Result<()> {
+    if flags.prune {
+        _ = std::fs::remove_dir_all(get_cache_dir());
+        println!("{} Pruned index", style("✔").green());
+    }
+
     let db = std::sync::Arc::new(tokio::sync::Mutex::new(
         arxiv_shared::db::DBConnection::new(&CONFIG.database_url)?,
     ));

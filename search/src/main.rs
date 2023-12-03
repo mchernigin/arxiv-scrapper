@@ -15,9 +15,15 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum RunMode {
     /// Run as cli
-    Cli,
+    Cli(Flags),
     /// Run as web server
-    Server,
+    Server(Flags),
+}
+
+#[derive(Parser, Debug)]
+pub struct Flags {
+    #[arg(short, long)]
+    pub prune: bool,
 }
 
 #[tokio::main]
@@ -25,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.mode {
-        RunMode::Cli => cli::run_cli().await,
-        RunMode::Server => server::run_server().await,
+        RunMode::Cli(flags) => cli::run_cli(flags).await,
+        RunMode::Server(flags) => server::run_server(flags).await,
     }
 }
