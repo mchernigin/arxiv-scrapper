@@ -5,7 +5,7 @@ use utoipa_rapidoc::RapiDoc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::config::CONFIG;
+use crate::config::{CONFIG, SYMSPELL, SYNONYMS};
 
 #[derive(utoipa::OpenApi)]
 #[openapi(
@@ -42,6 +42,15 @@ pub async fn run_server() -> anyhow::Result<()> {
         tokio::net::TcpListener::bind(format!("0.0.0.0:{}", CONFIG.server_specific.port))
             .await
             .unwrap();
+
+    log::info!("Loading dictionary...");
+    lazy_static::initialize(&SYMSPELL);
+    log::info!("Loaded dictionary...");
+
+    log::info!("Loading synonyms...");
+    lazy_static::initialize(&SYNONYMS);
+    log::info!("Loaded synonyms...");
+
     axum::serve(listener, app).await.unwrap();
 
     Ok(())

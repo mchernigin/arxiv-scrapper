@@ -2,7 +2,7 @@ use console::style;
 use dialoguer::{theme::ColorfulTheme, BasicHistory, Input};
 use indicatif::{ProgressBar, ProgressStyle};
 
-use crate::config::{CONFIG, SYMSPELL};
+use crate::config::{CONFIG, SYMSPELL, SYNONYMS};
 
 pub async fn run_cli() -> anyhow::Result<()> {
     let db = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -29,6 +29,7 @@ pub async fn run_cli() -> anyhow::Result<()> {
     );
     pb.set_message("Initializing dictionary...");
     lazy_static::initialize(&SYMSPELL);
+    lazy_static::initialize(&SYNONYMS);
     pb.finish_with_message("Dictianary has been loaded\n");
 
     let mut history = BasicHistory::new().max_entries(50).no_duplicates(true);

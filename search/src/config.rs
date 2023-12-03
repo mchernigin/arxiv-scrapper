@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use etcetera::{app_strategy, AppStrategy, AppStrategyArgs};
 
@@ -38,6 +38,19 @@ lazy_static! {
         );
 
         spell
+    };
+    pub static ref SYNONYMS: HashMap<String, Vec<String>> = {
+        let mut synonyms = HashMap::new();
+        let mut csv_reader = csv::Reader::from_path("./search/dictionaries/WordnetSynonyms.txt").unwrap();
+        for result in csv_reader.records() {
+            let record = result.unwrap();
+            let word = record.get(0).unwrap();
+            let word_synonyms = record.get(1).unwrap().split(';').map(|s| s.to_string()).collect();
+
+            synonyms.insert(word.to_string(), word_synonyms);
+        }
+
+        synonyms
     };
 }
 

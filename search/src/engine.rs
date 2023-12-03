@@ -11,7 +11,7 @@ use tantivy::{doc, DocAddress, Index, Score, Searcher};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::config::{CONFIG, SYMSPELL};
+use crate::config::{CONFIG, SYMSPELL, SYNONYMS};
 
 const TOKENIZER_MAIN: &str = "searxiv-main";
 
@@ -65,7 +65,7 @@ impl SearchEngine {
         let query = query.trim_matches('"').to_string();
 
         let query = spellcheck_query(query);
-        // let query = add_synonyms(query, 0);
+        let query = add_synonyms(query, 2);
         log::info!("Executing query {query:?}");
 
         let query = self.query_parser.parse_query(&query)?;
@@ -147,8 +147,9 @@ fn create_tokenizer() -> tantivy::tokenizer::TextAnalyzer {
 
 #[allow(dead_code)]
 fn spellcheck_query(query: String) -> String {
-    let mut words_witch_correction = Vec::new();
     const CORRECTED_WORD_WEIGHT: f32 = 0.5;
+
+    let mut words_witch_correction = Vec::new();
 
     query.split(' ').for_each(|word| {
         words_witch_correction.push(word.to_string());
@@ -158,7 +159,8 @@ fn spellcheck_query(query: String) -> String {
         {
             if suggestion.distance > 0 {
                 log::info!("Correcting {word:?} to {:?}", suggestion.term);
-                words_witch_correction.push(format!("{}^{}", suggestion.term, CORRECTED_WORD_WEIGHT));
+                words_witch_correction
+                    .push(format!("{}^{}", suggestion.term, CORRECTED_WORD_WEIGHT));
             }
         }
     });
@@ -168,18 +170,20 @@ fn spellcheck_query(query: String) -> String {
 
 #[allow(dead_code)]
 fn add_synonyms(query: String, n: usize) -> String {
-    let query_words = query
-        .split(' ')
-        .map(|s| s.to_string())
-        .collect::<Vec<String>>();
-    let mut query_words_with_synonyms = query_words.clone();
-    for word in query_words {
-        let mut synonyms = thesaurus::synonyms(&word)
-            .into_iter()
-            .take(n)
-            .collect::<Vec<_>>();
-        query_words_with_synonyms.append(&mut synonyms);
-    }
+    const SYNONYM_WEIGHT: f32 = 0.1;
+
+    let mut query_words_with_synonyms = Vec::new();
+
+    query.split(' ').for_each(|word| {
+        query_words_with_synonyms.push(word.to_string());
+        if let Some(found_synonyms) = SYNONYMS.get(word) {
+            let needed_synonyms = found_synonyms.iter().take(n).collect::<Vec<_>>();
+            log::info!("Found synonyms for {word:?}: {:?}", needed_synonyms);
+            for synonym in needed_synonyms {
+                query_words_with_synonyms.push(format!("{}^{}", synonym, SYNONYM_WEIGHT));
+            }
+        }
+    });
 
     query_words_with_synonyms.join(" ")
 }

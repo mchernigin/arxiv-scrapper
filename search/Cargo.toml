@@ -34,3 +34,4 @@ symspell = { git = "https://github.com/mchernigin/symspell.git" }
 thesaurus = { version = "0.5.2", features = ["moby"] }
 tower-http = { version = "0.5.0", features = ["cors", "trace"] }
 tower = "0.4.13"
+csv = "1.3.0"
