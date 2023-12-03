@@ -51,7 +51,7 @@ impl SearchEngine {
         query_parser.set_field_boost(title, 3.0);
         query_parser.set_field_boost(authors, 1.0);
         query_parser.set_field_boost(description, 1.0);
-        query_parser.set_field_boost(body, 0.25);
+        query_parser.set_field_boost(body, 0.1);
 
         Ok(Self {
             schema,
