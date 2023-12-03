@@ -6,7 +6,7 @@ use tantivy::schema::IndexRecordOption;
 use tantivy::schema::*;
 use tantivy::store::Compressor;
 use tantivy::tokenizer::StopWordFilter;
-use tantivy::{doc, Searcher, DocAddress, Index, Score};
+use tantivy::{doc, DocAddress, Index, Score, Searcher};
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -44,12 +44,14 @@ impl SearchEngine {
         let searcher = reader.searcher();
         let mut query_parser =
             QueryParser::for_index(&index, vec![title, authors, description, body]);
+
         query_parser.set_field_fuzzy(title, true, 1, true);
         query_parser.set_field_fuzzy(description, true, 1, true);
 
         query_parser.set_field_boost(title, 3.0);
-        query_parser.set_field_boost(authors, 2.0);
-        query_parser.set_field_boost(description, 2.0);
+        query_parser.set_field_boost(authors, 1.0);
+        query_parser.set_field_boost(description, 1.0);
+        query_parser.set_field_boost(body, 0.25);
 
         Ok(Self {
             schema,
@@ -59,9 +61,13 @@ impl SearchEngine {
     }
 
     pub fn query(&self, query: String, limit: usize) -> anyhow::Result<Vec<(Score, DocAddress)>> {
-        // NOTE: you can uncomment this... do it... but don't blame me later
+        // NOTE: we get query in double quotes if it contains more than 1 word
+        let query = query.trim_matches('"').to_string();
+
         let query = spellcheck_query(query);
         // let query = add_synonyms(query, 0);
+        log::info!("Executing query {query:?}");
+
         let query = self.query_parser.parse_query(&query)?;
         Ok(self.searcher.search(&query, &TopDocs::with_limit(limit))?)
     }
@@ -140,18 +146,20 @@ fn create_tokenizer() -> tantivy::tokenizer::TextAnalyzer {
 
 #[allow(dead_code)]
 fn spellcheck_query(query: String) -> String {
-    let words = query.split(' ').collect::<Vec<_>>();
-
     let mut words_witch_correction = Vec::new();
 
-    for word in words.into_iter() {
+    query.split(' ').for_each(|word| {
         words_witch_correction.push(word.to_string());
-        if let Some(suggestion) = SYMSPELL.lookup(word, symspell::Verbosity::Top, 2).first() {
+        if let Some(suggestion) = SYMSPELL
+            .lookup(word, symspell::Verbosity::Closest, 1)
+            .first()
+        {
             if suggestion.distance > 0 {
+                log::info!("Correcting {word:?} to {:?}", suggestion.term);
                 words_witch_correction.push(suggestion.term.to_string());
             }
         }
-    }
+    });
 
     words_witch_correction.join(" ")
 }
