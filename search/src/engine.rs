@@ -18,6 +18,7 @@ const TOKENIZER_MAIN: &str = "searxiv-main";
 pub struct SearchEngine {
     schema: tantivy::schema::Schema,
     searcher: Searcher,
+    index: Index,
     query_parser: QueryParser,
 }
 
@@ -56,6 +57,7 @@ impl SearchEngine {
         Ok(Self {
             schema,
             searcher,
+            index,
             query_parser,
         })
     }
@@ -77,6 +79,13 @@ impl SearchEngine {
         let retrieved_doc = self.searcher.doc(doc_address).ok()?;
         let id_field = self.schema.get_field("id").ok()?;
         retrieved_doc.get_first(id_field)?.as_u64()
+    }
+
+    pub fn get_index_size(&self) -> anyhow::Result<u32> {
+        let segments = self.index.searchable_segment_metas()?;
+        Ok(segments
+            .iter()
+            .fold(0u32, |sum, segment| sum + segment.num_docs()))
     }
 }
 

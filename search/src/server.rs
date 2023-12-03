@@ -41,6 +41,7 @@ pub async fn run_server(flags: Flags) -> anyhow::Result<()> {
     let store = Arc::new(searxiv::Store { engine, db });
     let app = axum::Router::new()
         .route("/", axum::routing::get(searxiv::root))
+        .route("/index-size", axum::routing::get(searxiv::index_size))
         .route("/search", axum::routing::get(searxiv::search))
         .merge(RapiDoc::with_openapi("/api-docs/openapi.json", ApiDoc::openapi()).path("/docs"))
         .layer(CorsLayer::permissive())
@@ -90,6 +91,23 @@ mod searxiv {
     )]
     pub(super) async fn root(State(_): State<Arc<Store>>) -> &'static str {
         "Hi!"
+    }
+
+    #[utoipa::path(
+        get,
+        path = "/index-size",
+        responses(
+            (status = 200, description = "Get number of pages in index", body = String)
+        )
+    )]
+    pub(super) async fn index_size(State(state): State<Arc<Store>>) -> String {
+        state
+            .engine
+            .lock()
+            .await
+            .get_index_size()
+            .unwrap_or(0)
+            .to_string()
     }
 
     /// Paper info
