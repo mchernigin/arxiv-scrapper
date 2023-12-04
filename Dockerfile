@@ -22,11 +22,15 @@ RUN cargo build --release --bin arxiv-search
 ###########
 FROM debian:bookworm-slim AS runtime
 
-RUN apt-get update && apt-get install -y libpq5 openssl libgomp1
+RUN apt-get update && \
+    apt-get install -y libpq5 openssl libgomp1 ca-certificates && \
+    apt-get clean
 
 COPY --from=builder /libtorch /libtorch
 ENV LIBTORCH=/libtorch
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$LIBTORCH/lib
+
+COPY --from=builder /searxiv/search/dictionaries /dictionaries
 
 COPY --from=builder /searxiv/target/release/arxiv-search /arxiv-search
 

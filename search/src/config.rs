@@ -28,9 +28,9 @@ lazy_static! {
     pub static ref SYMSPELL: symspell::SymSpell<symspell::AsciiStringStrategy> = {
         let mut spell = symspell::SymSpell::default();
         // TODO: store dictionaries in XDG_DATA_HOME and download them if there is none
-        spell.load_dictionary("./search/dictionaries/LScD.txt", 0, 1, " ");
+        spell.load_dictionary(&format!("{}/LScD.txt", &CONFIG.dictionaries_path), 0, 1, " ");
         spell.load_bigram_dictionary(
-            "./search/dictionaries/frequency_bigramdictionary_en_243_342.txt",
+            &format!("{}/FrequencyBigramdictionary.txt", &CONFIG.dictionaries_path),
             0,
             2,
             " ",
@@ -40,7 +40,9 @@ lazy_static! {
     };
     pub static ref SYNONYMS: HashMap<String, Vec<String>> = {
         let mut synonyms = HashMap::new();
-        let mut csv_reader = csv::Reader::from_path("./search/dictionaries/WordnetSynonyms.txt").unwrap();
+        println!("{}", format!("{}/WordnetSynonyms.txt", &CONFIG.dictionaries_path));
+        let mut csv_reader =
+            csv::Reader::from_path(&format!("{}/WordnetSynonyms.txt", &CONFIG.dictionaries_path)).unwrap();
         for result in csv_reader.records() {
             let record = result.unwrap();
             let word = record.get(0).unwrap();
@@ -71,6 +73,7 @@ pub struct Config {
     pub index_docstore_blocksize: usize,
     pub index_writer_memory_budget: usize,
     pub max_results: usize,
+    pub dictionaries_path: String,
     pub cli_specific: CliConfig,
     pub server_specific: ServerConfig,
 }
@@ -93,6 +96,7 @@ impl Default for Config {
             index_writer_memory_budget: 100_000_000,
             index_docstore_blocksize: 100_000, // TODO: figure out not random value
             max_results: 10,
+            dictionaries_path: "./search/dictionaries".to_string(),
             cli_specific: CliConfig { prune: false },
             server_specific: ServerConfig { port: 1818 },
         }

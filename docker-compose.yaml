@@ -1,4 +1,18 @@
 services:
+  searxiv:
+    build: .
+    ports:
+      - "1818:1818"
+    volumes:
+      - index:/root/.cache/searxiv
+    env_file:
+      - .env
+    environment:
+      - SEARXIV_DATABASE_URL=postgres://postgres:password@db/arxiv
+      - SEARXIV_DICTIONARIES_PATH=/dictionaries
+    depends_on:
+      db:
+        condition: service_healthy
   db:
     image: postgres:16.0
     restart: unless-stopped
@@ -19,5 +33,7 @@ services:
       start_period: 5s
 
 volumes:
+  index:
+    name: arxiv-index
   data:
     name: arxiv-data
