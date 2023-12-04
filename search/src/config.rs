@@ -1,6 +1,11 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
 
+use figment::{
+    providers::{Env, Format, Toml},
+    Error, Figment, Metadata, Profile, Provider,
+};
+
 use etcetera::{app_strategy, AppStrategy, AppStrategyArgs};
 use rust_bert::pipelines::sentence_embeddings::{
     SentenceEmbeddingsBuilder, SentenceEmbeddingsModel, SentenceEmbeddingsModelType,
@@ -15,21 +20,11 @@ lazy_static! {
         app_name: "searxiv".to_string(),
     })
     .unwrap();
-    pub static ref CONFIG: Config = {
-        let config_file = get_config_dir().join("searxiv.toml");
-        if let Ok(config_contents) = std::fs::read_to_string(&config_file) {
-            toml::from_str(&config_contents).unwrap_or_default()
-        } else {
-            let config = Config::default();
-            if std::fs::create_dir_all(get_config_dir()).is_ok() {
-                drop(std::fs::write(
-                    config_file,
-                    toml::to_string_pretty(&config).unwrap(),
-                ));
-            };
-            config
-        }
-    };
+    pub static ref CONFIG: Config = Figment::from(Config::default())
+        .merge(Toml::file(get_config_dir().join("searxiv.toml").to_str().unwrap()))
+        .merge(Env::prefixed("SEARXIV_"))
+        .extract()
+        .unwrap();
     pub static ref SYMSPELL: symspell::SymSpell<symspell::AsciiStringStrategy> = {
         let mut spell = symspell::SymSpell::default();
         // TODO: store dictionaries in XDG_DATA_HOME and download them if there is none
@@ -101,5 +96,17 @@ impl Default for Config {
             cli_specific: CliConfig { prune: false },
             server_specific: ServerConfig { port: 1818 },
         }
+    }
+}
+
+use figment::value::{Dict, Map};
+
+impl Provider for Config {
+    fn metadata(&self) -> Metadata {
+        Metadata::named("Searxiv Config")
+    }
+
+    fn data(&self) -> Result<Map<Profile, Dict>, Error> {
+        figment::providers::Serialized::defaults(Config::default()).data()
     }
 }

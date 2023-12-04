@@ -40,3 +40,5 @@ bincode = "1.3.3"
 rust-bert = { git = "https://github.com/guillaume-be/rust-bert.git", rev = "9f2cd17e914dee9570e981c63a4021beb33250c2", features = [
     "download-libtorch",
 ] }
+dotenv = "0.15.0"
+figment = { version = "0.10.12", features = ["env", "toml"] }
