@@ -1,6 +1,11 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
 
+use figment::{
+    providers::{Env, Format, Toml},
+    Error, Figment, Metadata, Profile, Provider,
+};
+
 use etcetera::{app_strategy, AppStrategy, AppStrategyArgs};
 use rust_bert::pipelines::sentence_embeddings::{
     SentenceEmbeddingsBuilder, SentenceEmbeddingsModel, SentenceEmbeddingsModelType,
@@ -15,27 +20,17 @@ lazy_static! {
         app_name: "searxiv".to_string(),
     })
     .unwrap();
-    pub static ref CONFIG: Config = {
-        let config_file = get_config_dir().join("searxiv.toml");
-        if let Ok(config_contents) = std::fs::read_to_string(&config_file) {
-            toml::from_str(&config_contents).unwrap_or_default()
-        } else {
-            let config = Config::default();
-            if std::fs::create_dir_all(get_config_dir()).is_ok() {
-                drop(std::fs::write(
-                    config_file,
-                    toml::to_string_pretty(&config).unwrap(),
-                ));
-            };
-            config
-        }
-    };
+    pub static ref CONFIG: Config = Figment::from(Config::default())
+        .merge(Toml::file(get_config_dir().join("searxiv.toml").to_str().unwrap()))
+        .merge(Env::prefixed("SEARXIV_"))
+        .extract()
+        .unwrap();
     pub static ref SYMSPELL: symspell::SymSpell<symspell::AsciiStringStrategy> = {
         let mut spell = symspell::SymSpell::default();
         // TODO: store dictionaries in XDG_DATA_HOME and download them if there is none
-        spell.load_dictionary("./search/dictionaries/LScD.txt", 0, 1, " ");
+        spell.load_dictionary(&format!("{}/LScD.txt", &CONFIG.dictionaries_path), 0, 1, " ");
         spell.load_bigram_dictionary(
-            "./search/dictionaries/frequency_bigramdictionary_en_243_342.txt",
+            &format!("{}/FrequencyBigramdictionary.txt", &CONFIG.dictionaries_path),
             0,
             2,
             " ",
@@ -45,7 +40,9 @@ lazy_static! {
     };
     pub static ref SYNONYMS: HashMap<String, Vec<String>> = {
         let mut synonyms = HashMap::new();
-        let mut csv_reader = csv::Reader::from_path("./search/dictionaries/WordnetSynonyms.txt").unwrap();
+        println!("{}", format!("{}/WordnetSynonyms.txt", &CONFIG.dictionaries_path));
+        let mut csv_reader =
+            csv::Reader::from_path(&format!("{}/WordnetSynonyms.txt", &CONFIG.dictionaries_path)).unwrap();
         for result in csv_reader.records() {
             let record = result.unwrap();
             let word = record.get(0).unwrap();
@@ -76,6 +73,7 @@ pub struct Config {
     pub index_docstore_blocksize: usize,
     pub index_writer_memory_budget: usize,
     pub max_results: usize,
+    pub dictionaries_path: String,
     pub cli_specific: CliConfig,
     pub server_specific: ServerConfig,
 }
@@ -98,8 +96,21 @@ impl Default for Config {
             index_writer_memory_budget: 100_000_000,
             index_docstore_blocksize: 100_000, // TODO: figure out not random value
             max_results: 10,
+            dictionaries_path: "./search/dictionaries".to_string(),
             cli_specific: CliConfig { prune: false },
             server_specific: ServerConfig { port: 1818 },
         }
+    }
+}
+
+use figment::value::{Dict, Map};
+
+impl Provider for Config {
+    fn metadata(&self) -> Metadata {
+        Metadata::named("Searxiv Config")
+    }
+
+    fn data(&self) -> Result<Map<Profile, Dict>, Error> {
+        figment::providers::Serialized::defaults(Config::default()).data()
     }
 }
