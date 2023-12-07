@@ -81,7 +81,7 @@ impl SearchEngine {
             .searcher
             .search(&search_query, &TopDocs::with_limit(100))?;
 
-        Ok(self.bert_filter(query, search_results).await?)
+        self.bert_filter(query, search_results).await
     }
 
     pub async fn bert_filter(
@@ -174,7 +174,8 @@ async fn create_index(schema: &Schema, db: &Arc<Mutex<DBConnection>>) -> anyhow:
                 .collect::<Vec<_>>()
                 .join(" ");
 
-            let sentences = [&format!("{}. {}", paper.title, paper.description)];
+            let title_and_abstract = format!("{}. {}", paper.title, paper.description);
+            let sentences = title_and_abstract.split(". ").collect::<Vec<_>>();
             let output = model.encode(&sentences)?;
             let embedding = output.first().unwrap().to_owned();
             let embedding_bytes = bincode::serialize(&embedding).unwrap();

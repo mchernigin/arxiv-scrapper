@@ -40,7 +40,6 @@ lazy_static! {
     };
     pub static ref SYNONYMS: HashMap<String, Vec<String>> = {
         let mut synonyms = HashMap::new();
-        println!("{}", format!("{}/WordnetSynonyms.txt", &CONFIG.dictionaries_path));
         let mut csv_reader =
             csv::Reader::from_path(&format!("{}/WordnetSynonyms.txt", &CONFIG.dictionaries_path)).unwrap();
         for result in csv_reader.records() {
@@ -54,7 +53,7 @@ lazy_static! {
         synonyms
     };
     pub static ref MODEL: Arc<Mutex<SentenceEmbeddingsModel>> =
-        Arc::new(Mutex::new(SentenceEmbeddingsBuilder::remote(SentenceEmbeddingsModelType::AllMiniLmL12V2)
+        Arc::new(Mutex::new(SentenceEmbeddingsBuilder::remote(SentenceEmbeddingsModelType::AllDistilrobertaV1)
         .create_model().unwrap()));
 }
 
