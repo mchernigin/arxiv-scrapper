@@ -1,5 +1,8 @@
 use crate::config;
-use arxiv_shared::db;
+use arxiv_shared::{
+    db,
+    models::{NewAuthor, NewPaper, NewSubject},
+};
 
 use futures_util::StreamExt;
 use std::sync::Arc;
@@ -32,14 +35,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 type SharedProgress = Arc<Mutex<indicatif::ProgressBar>>;
 
 impl Scraper {
-    pub fn new(config: config::Config) -> Result<Scraper> {
+    pub async fn new(config: config::Config) -> Result<Scraper> {
         let client = reqwest::Client::builder()
             .user_agent("Googlebot")
             .build()
             .unwrap();
-        let db = Arc::new(Mutex::new(db::DBConnection::new(
-            &std::env::var("DATABASE_URL").unwrap(),
-        )?));
+        let db = Arc::new(Mutex::new(
+            db::DBConnection::new(&std::env::var("DATABASE_URL").unwrap()).await?,
+        ));
         let last_request = Arc::new(Mutex::new(std::time::Instant::now()));
         let burst_count = Arc::new(Mutex::new(0));
 
@@ -53,7 +56,12 @@ impl Scraper {
     }
 
     pub async fn get_total_papers(&self) -> Result<i64> {
-        self.db.lock().await.count_papers().map_err(|e| e.into())
+        self.db
+            .lock()
+            .await
+            .count_papers()
+            .await
+            .map_err(|e| e.into())
     }
 
     async fn get(&self, url: &Url) -> reqwest::Result<reqwest::Response> {
@@ -106,39 +114,28 @@ impl Scraper {
     pub async fn scrape_paper(&self, url: Url, sp: &SharedProgress) -> Result<()> {
         let dom = self.get_dom(url.clone()).await?;
 
-        let title = &select_title(&dom);
-        let description = &select_description(&dom);
+        let title = select_title(&dom);
+        let description = select_description(&dom);
 
         let pdf_url = url.replace("abs", "pdf");
         let pdf_bytes = self.download_pdf(pdf_url).await?;
-        let body = &body_from_pdf(&pdf_bytes);
+        let body = body_from_pdf(&pdf_bytes);
 
         if body.is_empty() {
             log::warn!("PDF: empty body {url:?}")
         }
 
-        let mut db = self.db.lock().await;
-
-        // TODO: https://stackoverflow.com/questions/75939019/transactions-in-rust-diesel
-        let paper_id = db.insert_paper(&url, title, description, body)?;
-
+        let new_paper = NewPaper {
+            url,
+            title,
+            body,
+            description,
+        };
         let authors = select_authors(&dom)?;
-        _ = authors
-            .iter()
-            .map(|name| db.insert_author(name))
-            .collect::<db::Result<Vec<_>>>()?
-            .into_iter()
-            .map(|author_id| db.set_paper_author(paper_id, author_id))
-            .collect::<db::Result<Vec<_>>>()?;
-
         let subjects = select_subjects(&dom)?;
-        _ = subjects
-            .iter()
-            .map(|name| db.insert_subject(name))
-            .collect::<db::Result<Vec<_>>>()?
-            .into_iter()
-            .map(|subject_id| db.set_paper_category(paper_id, subject_id))
-            .collect::<db::Result<Vec<_>>>()?;
+
+        let mut db = self.db.lock().await;
+        db.insert_paper_full(new_paper, authors, subjects).await?;
 
         sp.lock().await.inc(1);
 
@@ -203,7 +200,7 @@ impl Scraper {
         let mut paper_urls_to_download = Vec::new();
         for paper_url in paper_urls {
             let export_url = paper_url.replace("arxiv.org", "export.arxiv.org");
-            if !self.db.lock().await.paper_exists(&export_url)? {
+            if !self.db.lock().await.paper_exists(&export_url).await? {
                 paper_urls_to_download.push(export_url);
             }
         }
@@ -272,18 +269,20 @@ fn select_description(dom: &scraper::Html) -> String {
         .unwrap_or_default()
 }
 
-fn select_authors(dom: &scraper::Html) -> Result<Vec<String>> {
+fn select_authors(dom: &scraper::Html) -> Result<Vec<NewAuthor>> {
     let authors_selector = scraper::Selector::parse(".authors > a").unwrap();
     let authors_elements = dom.select(&authors_selector).collect::<Vec<_>>();
     let authors = authors_elements
         .iter()
-        .map(|a| a.text().collect::<String>())
+        .map(|a| NewAuthor {
+            name: a.text().collect::<String>(),
+        })
         .collect::<Vec<_>>();
 
     Ok(authors)
 }
 
-fn select_subjects(dom: &scraper::Html) -> Result<Vec<String>> {
+fn select_subjects(dom: &scraper::Html) -> Result<Vec<NewSubject>> {
     let subjects_selector = scraper::Selector::parse("td.subjects").unwrap();
     let subjects = dom
         .select(&subjects_selector)
@@ -292,7 +291,9 @@ fn select_subjects(dom: &scraper::Html) -> Result<Vec<String>> {
             s.text()
                 .collect::<String>()
                 .split(';')
-                .map(|x| x.trim().to_string())
+                .map(|x| NewSubject {
+                    name: x.trim().to_string(),
+                })
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();

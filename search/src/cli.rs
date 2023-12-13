@@ -14,7 +14,7 @@ pub async fn run_cli(flags: Flags) -> anyhow::Result<()> {
     }
 
     let db = std::sync::Arc::new(tokio::sync::Mutex::new(
-        arxiv_shared::db::DBConnection::new(&CONFIG.database_url)?,
+        arxiv_shared::db::DBConnection::new(&CONFIG.database_url).await?,
     ));
 
     let pb = ProgressBar::new_spinner();
@@ -54,7 +54,7 @@ pub async fn run_cli(flags: Flags) -> anyhow::Result<()> {
         for (idx, &(_score, doc_address)) in results.iter().enumerate() {
             let doc_id = search.get_doc_id(doc_address).unwrap();
             let mut db = db.lock().await;
-            let paper = db.get_paper(doc_id as i32).unwrap();
+            let paper = db.get_paper(doc_id as i32).await.unwrap();
             println!(
                 "{:2}. {} ({})",
                 idx + 1,

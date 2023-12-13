@@ -164,11 +164,12 @@ async fn create_index(schema: &Schema, db: &Arc<Mutex<DBConnection>>) -> anyhow:
         let mut index_writer = index.writer(CONFIG.index_writer_memory_budget)?;
         let model = &MODEL.lock().await;
         let mut db = db.lock().await;
-        let papers = db.get_all_papers()?;
+        let papers = db.get_all_papers().await?;
 
         for paper in papers {
             let authors = db
-                .get_paper_authors(paper.id)?
+                .get_paper_authors(paper.id)
+                .await?
                 .into_iter()
                 .map(|a| a.name)
                 .collect::<Vec<_>>()
