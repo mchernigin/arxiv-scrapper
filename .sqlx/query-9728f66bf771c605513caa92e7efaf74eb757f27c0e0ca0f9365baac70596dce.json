@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO subjects (name)\n                    VALUES ($1)\n                    ON CONFLICT(name) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9728f66bf771c605513caa92e7efaf74eb757f27c0e0ca0f9365baac70596dce"
+}

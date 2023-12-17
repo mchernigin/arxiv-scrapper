@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT authors.id, authors.name\n                FROM authors\n            JOIN paper_author ON authors.id = paper_author.author_id\n                WHERE paper_author.paper_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "fc6cac36d3f22ddf7e370d70bc801154748ac73a97084a20402659a32977a37c"
+}
