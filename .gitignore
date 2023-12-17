@@ -1,6 +1,6 @@
 .*
 !.gitignore
+!.dockerignore
 
 target
-*.log
-tantivy-index
+data

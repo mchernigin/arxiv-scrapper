@@ -1,30 +1,30 @@
-###########
-# Builder #
-###########
+# Builder ######################################################################
+
 FROM rust:1.72-bookworm as builder
 
 RUN apt-get update && \
-    apt-get install -y pkg-config g++ libssl-dev libpq-dev
+  apt-get install -y pkg-config g++ libssl-dev libpq-dev
 
 RUN wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.1.0%2Bcpu.zip && \
-    unzip libtorch-cxx11-abi-shared-with-deps-2.1.0+cpu.zip && \
-    rm libtorch-cxx11-abi-shared-with-deps-2.1.0+cpu.zip
+  unzip libtorch-cxx11-abi-shared-with-deps-2.1.0+cpu.zip && \
+  rm libtorch-cxx11-abi-shared-with-deps-2.1.0+cpu.zip
 
 ENV LIBTORCH=/libtorch
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$LIBTORCH/lib
+
+ENV SQLX_OFFLINE true
 
 WORKDIR /searxiv
 COPY . .
 RUN cargo build --release --bin arxiv-search
 
-###########
-# Runtime #
-###########
+# Runtime ######################################################################
+
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && \
-    apt-get install -y libpq5 openssl libgomp1 ca-certificates && \
-    apt-get clean
+  apt-get install -y libpq5 openssl libgomp1 ca-certificates && \
+  apt-get clean
 
 COPY --from=builder /libtorch /libtorch
 ENV LIBTORCH=/libtorch
