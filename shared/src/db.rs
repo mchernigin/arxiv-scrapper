@@ -77,7 +77,7 @@ impl DBConnection {
 
     pub async fn insert_paper(&mut self, new_paper: NewPaper) -> Result<models::Id> {
         log::trace!("DB: inserting new paper {:?}", new_paper.url);
-        sqlx::query_scalar!(
+        Ok(sqlx::query_scalar!(
             "INSERT INTO papers (url, title, description, body)
                 VALUES ($1, $2, $3, $4)
                 RETURNING id",
@@ -87,8 +87,7 @@ impl DBConnection {
             new_paper.body,
         )
         .fetch_one(&self.pool)
-        .await
-        .map_err(|e| e.into())
+        .await?)
     }
 
     pub async fn insert_author(&mut self, new_author: NewAuthor) -> Result<models::Id> {
@@ -163,44 +162,69 @@ impl DBConnection {
     ) -> Result<()> {
         let mut tx = self.pool.begin().await?;
 
-        sqlx::query_scalar!(
-            "INSERT INTO papers (url, title, description, body) VALUES ($1, $2, $3, $4)",
+        let paper_id: models::Id = sqlx::query_scalar!(
+            "INSERT INTO papers (url, title, description, body)
+                VALUES ($1, $2, $3, $4)
+                RETURNING id",
             paper.url,
             paper.title,
             paper.description,
             paper.body,
         )
-        .execute(&mut *tx)
+        .fetch_one(&mut *tx)
         .await?;
 
         for author in authors {
-            sqlx::query_scalar!("INSERT INTO authors (name) VALUES ($1)", author.name)
-                .fetch_one(&mut *tx)
-                .await?;
-            sqlx::query_scalar!(
+            sqlx::query!(
+                "INSERT INTO authors (name)
+                    VALUES ($1)
+                    ON CONFLICT(name) DO NOTHING",
+                author.name
+            )
+            .execute(&mut *tx)
+            .await?;
+            let author_id = sqlx::query_scalar!(
+                "SELECT authors.id FROM authors WHERE name = $1",
+                author.name
+            )
+            .fetch_one(&mut *tx)
+            .await?;
+            sqlx::query!(
                 "INSERT INTO paper_author (paper_id, author_id)
-                    VALUES (currval(pg_get_serial_sequence('papers', 'id')),
-                            currval(pg_get_serial_sequence('authors', 'id')))",
+                    VALUES ($1, $2)",
+                paper_id,
+                author_id
             )
             .execute(&mut *tx)
             .await?;
         }
 
         for subject in subjects {
-            sqlx::query_scalar!("INSERT INTO subjects (name) VALUES ($1)", subject.name)
-                .execute(&mut *tx)
-                .await?;
-            sqlx::query_scalar!(
+            sqlx::query!(
+                "INSERT INTO subjects (name)
+                    VALUES ($1)
+                    ON CONFLICT(name) DO NOTHING",
+                subject.name
+            )
+            .execute(&mut *tx)
+            .await?;
+            let subject_id: models::Id = sqlx::query_scalar!(
+                "SELECT subjects.id FROM subjects WHERE name = $1",
+                subject.name
+            )
+            .fetch_one(&mut *tx)
+            .await?;
+            sqlx::query!(
                 "INSERT INTO paper_subject (paper_id, subject_id)
-                    VALUES (currval(pg_get_serial_sequence('papers', 'id')),
-                            currval(pg_get_serial_sequence('subjects', 'id')))",
+                    VALUES ($1, $2)
+                    ON CONFLICT DO NOTHING",
+                paper_id,
+                subject_id
             )
             .execute(&mut *tx)
             .await?;
         }
 
-        tx.commit().await?;
-
-        Ok(())
+        Ok(tx.commit().await?)
     }
 }
