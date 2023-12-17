@@ -34,7 +34,7 @@ pub async fn run_server(flags: Flags) -> anyhow::Result<()> {
     }
 
     let db = std::sync::Arc::new(tokio::sync::Mutex::new(
-        arxiv_shared::db::DBConnection::new(&CONFIG.database_url)?,
+        arxiv_shared::db::DBConnection::new(&CONFIG.database_url).await?,
     ));
     let engine = Mutex::new(crate::engine::SearchEngine::new(&db).await?);
 
@@ -155,9 +155,10 @@ mod searxiv {
         for (_score, doc_address) in results {
             let doc_id = state.engine.lock().await.get_doc_id(doc_address).unwrap();
             let mut db = state.db.lock().await;
-            let paper = db.get_paper(doc_id as i32).unwrap();
+            let paper = db.get_paper(doc_id as i32).await.unwrap();
             let authors = db
                 .get_paper_authors(paper.id)
+                .await
                 .unwrap()
                 .iter()
                 .map(|a| a.name.to_string())

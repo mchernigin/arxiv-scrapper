@@ -1,10 +1,11 @@
 services:
   searxiv:
     build: .
+    platform: linux/amd64
     ports:
       - "1818:1818"
     volumes:
-      - index:/root/.cache/searxiv
+      - ./data/index:/root/.cache/searxiv
     env_file:
       - .env
     environment:
@@ -19,8 +20,8 @@ services:
     environment:
       - POSTGRES_PASSWORD=$POSTGRES_PASSWORD
     volumes:
+      - ./data/db:/var/lib/postgresql/data
       - ./shared/db/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     env_file:
@@ -31,9 +32,4 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-
-volumes:
-  index:
-    name: arxiv-index
-  data:
-    name: arxiv-data
+    userns_mode: "keep-id"

@@ -9,7 +9,7 @@ async fn main() -> anyhow::Result<()> {
 
     dotenvy::dotenv()?;
 
-    let mut scraper = scraper::Scraper::new(cfg.clone())?;
+    let mut scraper = scraper::Scraper::new(cfg.clone()).await?;
 
     let start_url: String = format!(
         "https://arxiv.org/search/advanced?\
