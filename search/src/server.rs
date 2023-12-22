@@ -49,8 +49,7 @@ pub async fn run_server(flags: Flags) -> anyhow::Result<()> {
 
     let listener =
         tokio::net::TcpListener::bind(format!("0.0.0.0:{}", CONFIG.server_specific.port))
-            .await
-            .unwrap();
+            .await?;
 
     log::info!("Loading dictionary...");
     lazy_static::initialize(&SYMSPELL);
@@ -60,9 +59,7 @@ pub async fn run_server(flags: Flags) -> anyhow::Result<()> {
     lazy_static::initialize(&SYNONYMS);
     log::info!("Loaded synonyms...");
 
-    axum::serve(listener, app).await.unwrap();
-
-    Ok(())
+    Ok(axum::serve(listener, app).await?)
 }
 
 mod searxiv {

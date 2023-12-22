@@ -9,7 +9,7 @@ services:
     env_file:
       - .env
     environment:
-      - SEARXIV_DATABASE_URL=postgres://postgres:password@db/arxiv
+      - SEARXIV_DATABASE_URL=$SEARXIV_DATABASE_URL
       - SEARXIV_DICTIONARIES_PATH=/dictionaries
     depends_on:
       db:

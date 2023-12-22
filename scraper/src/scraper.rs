@@ -41,7 +41,7 @@ impl Scraper {
             .build()
             .unwrap();
         let db = Arc::new(Mutex::new(
-            db::DBConnection::new(&std::env::var("DATABASE_URL").unwrap()).await?,
+            db::DBConnection::new(&std::env::var("SEARXIV_DATABASE_URL").unwrap()).await?,
         ));
         let last_request = Arc::new(Mutex::new(std::time::Instant::now()));
         let burst_count = Arc::new(Mutex::new(0));
